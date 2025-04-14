@@ -10,7 +10,7 @@ import '../database/database_helper.dart';
 
 class ApiService {
   // API URL - Update with your Render deployment URL
-  static const String baseUrl = 'https://geo-bangladesh-api.onrender.com';
+  static const String baseUrl = 'https://geo-bangladesh-app.onrender.com';
   static const String apiUrl = '$baseUrl/api/entities/';
   static const String loginUrl = '$baseUrl/api/login/';
   static const String registerUrl = '$baseUrl/api/register/';
