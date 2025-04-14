@@ -3,10 +3,13 @@ import 'package:flutter/foundation.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:io';
 import '../models/entity.dart';
 import '../services/api_service.dart';
 import '../main.dart';
 import 'entity_form.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import '../database/database_helper.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({Key? key}) : super(key: key);
@@ -18,10 +21,13 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> {
   GoogleMapController? _controller;
   final ApiService _apiService = ApiService();
+  final DatabaseHelper _dbHelper = DatabaseHelper();
+
   bool _isLoading = true;
   String _errorMessage = '';
   final Set<Marker> _markers = {};
   bool _isMapReady = false;
+  bool _isOfflineMode = false;
 
   // Bangladesh center coordinates
   static const LatLng _bangladesh = LatLng(23.6850, 90.3563);
@@ -29,10 +35,19 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void initState() {
     super.initState();
+    _checkConnectivity();
     _fetchEntities();
   }
 
-  // Fetch entities
+  // Check for internet connectivity
+  Future<void> _checkConnectivity() async {
+    var connectivityResult = await Connectivity().checkConnectivity();
+    setState(() {
+      _isOfflineMode = connectivityResult == ConnectivityResult.none;
+    });
+  }
+
+  // Fetch entities from API or local cache
   Future<void> _fetchEntities() async {
     try {
       setState(() {
@@ -79,7 +94,6 @@ class _MapScreenState extends State<MapScreen> {
       }
 
       print('Creating marker for entity ${entity.id}: ${entity.title}');
-
       final markerId = MarkerId(entity.id.toString());
       final marker = Marker(
         markerId: markerId,
@@ -98,7 +112,6 @@ class _MapScreenState extends State<MapScreen> {
     }
 
     print('Created ${markers.length} markers');
-
     if (mounted) {
       setState(() {
         _markers.clear();
@@ -130,7 +143,35 @@ class _MapScreenState extends State<MapScreen> {
           ],
         ),
       )
-          : _buildMap(),
+          : Stack(
+        children: [
+          _buildMap(),
+          // Offline mode indicator
+          if (_isOfflineMode)
+            Positioned(
+              top: 10,
+              left: 10,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.7),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    Icon(Icons.cloud_off, color: Colors.white, size: 16),
+                    SizedBox(width: 8),
+                    Text(
+                      'Offline Mode',
+                      style: TextStyle(color: Colors.white, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: _fetchEntities,
         tooltip: 'Refresh',
@@ -250,24 +291,7 @@ class _MapScreenState extends State<MapScreen> {
               Text('Longitude: ${entity.lon.toStringAsFixed(6)}'),
               const SizedBox(height: 16),
               if (entity.image != null && entity.image!.isNotEmpty)
-                GestureDetector(
-                  onTap: () {
-                    _showFullImage(entity.title, entity.image!);
-                  },
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: CachedNetworkImage(
-                      imageUrl: ApiService.getImageUrl(entity.image),
-                      placeholder: (context, url) => const Center(
-                        child: CircularProgressIndicator(),
-                      ),
-                      errorWidget: (context, url, error) => const Icon(Icons.error),
-                      width: double.infinity,
-                      height: 200,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                ),
+                _buildEntityImage(entity),
               const SizedBox(height: 16),
               const Center(
                 child: Text(
@@ -278,11 +302,9 @@ class _MapScreenState extends State<MapScreen> {
                   ),
                 ),
               ),
-
               // Display additional properties if available
               if (entity.properties != null && entity.properties!.isNotEmpty)
                 ..._buildAdditionalProperties(entity.properties!),
-
               const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
@@ -303,6 +325,18 @@ class _MapScreenState extends State<MapScreen> {
                   TextButton(
                     onPressed: () async {
                       Navigator.pop(context);
+
+                      // Check if logged in before allowing delete
+                      if (!_apiService.isLoggedIn()) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('You need to be logged in to delete entities'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                        return;
+                      }
+
                       // Show confirmation dialog
                       final confirm = await showDialog<bool>(
                         context: context,
@@ -323,12 +357,21 @@ class _MapScreenState extends State<MapScreen> {
                       );
 
                       if (confirm == true && entity.id != null) {
-                        await _apiService.deleteEntity(entity.id!);
-                        Provider.of<EntityProvider>(context, listen: false).deleteEntity(entity.id!);
-                        _fetchEntities(); // Refresh markers
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Entity deleted successfully')),
-                        );
+                        try {
+                          await _apiService.deleteEntity(entity.id!);
+                          Provider.of<EntityProvider>(context, listen: false).deleteEntity(entity.id!);
+                          _fetchEntities(); // Refresh markers
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Entity deleted successfully')),
+                          );
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Failed to delete entity: $e'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
                       }
                     },
                     child: const Text('Delete', style: TextStyle(color: Colors.red)),
@@ -338,6 +381,53 @@ class _MapScreenState extends State<MapScreen> {
             ],
           ),
         );
+      },
+    );
+  }
+
+  // Build entity image with offline support
+  Widget _buildEntityImage(Entity entity) {
+    return FutureBuilder<String?>(
+      future: _isOfflineMode ? _dbHelper.getOfflineImagePath(entity.id!) : Future.value(null),
+      builder: (context, snapshot) {
+        if (_isOfflineMode && snapshot.hasData && snapshot.data != null) {
+          // Use offline image
+          return GestureDetector(
+            onTap: () {
+              _showFullImage(entity.title, snapshot.data!);
+            },
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.file(
+                File(snapshot.data!),
+                width: double.infinity,
+                height: 200,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => const Icon(Icons.error),
+              ),
+            ),
+          );
+        } else {
+          // Use online image
+          return GestureDetector(
+            onTap: () {
+              _showFullImage(entity.title, entity.image!);
+            },
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: CachedNetworkImage(
+                imageUrl: ApiService.getImageUrl(entity.image),
+                placeholder: (context, url) => const Center(
+                  child: CircularProgressIndicator(),
+                ),
+                errorWidget: (context, url, error) => const Icon(Icons.error),
+                width: double.infinity,
+                height: 200,
+                fit: BoxFit.cover,
+              ),
+            ),
+          );
+        }
       },
     );
   }
@@ -400,8 +490,10 @@ class _MapScreenState extends State<MapScreen> {
     return widgets;
   }
 
-  // Show full-screen image
+  // Show full-screen image with offline support
   void _showFullImage(String title, String imagePath) {
+    final bool isOfflineImage = imagePath.startsWith('/');
+
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => Scaffold(
@@ -414,7 +506,12 @@ class _MapScreenState extends State<MapScreen> {
               boundaryMargin: const EdgeInsets.all(20),
               minScale: 0.5,
               maxScale: 4,
-              child: CachedNetworkImage(
+              child: isOfflineImage
+                  ? Image.file(
+                File(imagePath),
+                errorBuilder: (context, error, stackTrace) => const Icon(Icons.error),
+              )
+                  : CachedNetworkImage(
                 imageUrl: ApiService.getImageUrl(imagePath),
                 placeholder: (context, url) => const Center(
                   child: CircularProgressIndicator(),

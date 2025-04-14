@@ -5,16 +5,15 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import '../models/entity.dart';
 import '../services/api_service.dart';
 import '../utils/image_utils.dart';
 import '../main.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'dart:io' show Platform;
 
 class EntityFormScreen extends StatefulWidget {
   final Entity? entityToEdit;
-
   const EntityFormScreen({Key? key, this.entityToEdit}) : super(key: key);
 
   @override
@@ -30,11 +29,15 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
   // Use XFile instead of File for cross-platform compatibility
   XFile? _selectedImage;
   Uint8List? _webImageBytes;
+
   final ApiService _apiService = ApiService();
+
   bool _isSubmitting = false;
   String? _errorMessage;
   bool _isEditMode = false;
   int? _editEntityId;
+  bool _isLoggedIn = false;
+  bool _isOfflineMode = false;
 
   // Location data
   Map<String, dynamic>? _locationInfo;
@@ -43,7 +46,61 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
   @override
   void initState() {
     super.initState();
+    _checkAuthStatus();
+    _checkConnectivity();
     _initForm();
+  }
+
+  // Check if user is logged in
+  Future<void> _checkAuthStatus() async {
+    await _apiService.initialize();
+    setState(() {
+      _isLoggedIn = _apiService.isLoggedIn();
+    });
+
+    if (!_isLoggedIn) {
+      // Show warning if not logged in
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('You must be logged in to create or edit entities'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 5),
+          ),
+        );
+      });
+    }
+  }
+
+  // Check for internet connectivity
+  Future<void> _checkConnectivity() async {
+    var connectivityResult = await Connectivity().checkConnectivity();
+    setState(() {
+      _isOfflineMode = connectivityResult == ConnectivityResult.none;
+    });
+
+    // Listen for connectivity changes
+    Connectivity().onConnectivityChanged.listen((result) {
+      setState(() {
+        _isOfflineMode = result == ConnectivityResult.none;
+      });
+
+      if (result == ConnectivityResult.none) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('You are offline. Changes will be saved locally and synced when online.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('You are back online.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    });
   }
 
   // Initialize form with entity data if in edit mode
@@ -79,8 +136,10 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
             _lonController.text = position.longitude.toString();
           });
 
-          // Get location info from Geoapify
-          _getLocationInfo(position.latitude, position.longitude);
+          // Get location info from Geoapify if online
+          if (!_isOfflineMode) {
+            _getLocationInfo(position.latitude, position.longitude);
+          }
         } catch (e) {
           // Default to Bangladesh center coordinates if location access fails
           setState(() {
@@ -125,8 +184,10 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
           _lonController.text = position.longitude.toString();
         });
 
-        // Get location info from Geoapify
-        _getLocationInfo(position.latitude, position.longitude);
+        // Get location info from Geoapify if online
+        if (!_isOfflineMode) {
+          _getLocationInfo(position.latitude, position.longitude);
+        }
       }
     } catch (e) {
       setState(() {
@@ -141,6 +202,10 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
   // Get location info from Geoapify
   Future<void> _getLocationInfo(double lat, double lon) async {
     try {
+      if (_isOfflineMode) {
+        return; // Skip if offline
+      }
+
       setState(() {
         _isLoadingLocationInfo = true;
       });
@@ -195,7 +260,12 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
   Future<void> _pickImage() async {
     try {
       final ImagePicker picker = ImagePicker();
-      final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 800,
+        maxHeight: 600,
+        imageQuality: 85,
+      );
 
       if (image != null) {
         if (kIsWeb) {
@@ -221,6 +291,7 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
   Future<void> _takePhoto() async {
     try {
       final ImagePicker picker = ImagePicker();
+
       if (kIsWeb) {
         // Web does not support camera through browser, redirect to gallery
         await _pickImage();
@@ -243,6 +314,9 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
       final XFile? photo = await picker.pickImage(
         source: ImageSource.camera,
         preferredCameraDevice: CameraDevice.rear,
+        maxWidth: 800,
+        maxHeight: 600,
+        imageQuality: 85,
       );
 
       if (photo != null) {
@@ -257,10 +331,17 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
     }
   }
 
-
   // Submit form to create or update entity
   Future<void> _submitForm() async {
     if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    // Check if logged in
+    if (!_isLoggedIn) {
+      setState(() {
+        _errorMessage = 'You must be logged in to create or edit entities';
+      });
       return;
     }
 
@@ -276,11 +357,17 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
 
       if (_isEditMode && _editEntityId != null) {
         // Update existing entity
+        File? imageFile;
+        if (_selectedImage != null && !kIsWeb) {
+          imageFile = File(_selectedImage!.path);
+        }
+
         final success = await _apiService.updateEntity(
           _editEntityId!,
           title,
           lat,
           lon,
+          imageFile,
         );
 
         if (success) {
@@ -298,7 +385,12 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
               .updateEntity(updatedEntity);
 
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Entity updated successfully')),
+            SnackBar(
+              content: Text(_isOfflineMode
+                  ? 'Entity saved locally and will be synced when online'
+                  : 'Entity updated successfully'),
+              backgroundColor: _isOfflineMode ? Colors.orange : Colors.green,
+            ),
           );
 
           Navigator.pop(context);
@@ -313,12 +405,29 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
           return;
         }
 
-        // Create new entity with placeholder image
-        final newEntityId = await _apiService.createEntityWithoutImage(
-          title,
-          lat,
-          lon,
-        );
+        int newEntityId;
+
+        if (kIsWeb) {
+          // Web doesn't support File objects, use version without image
+          newEntityId = await _apiService.createEntityWithoutImage(
+            title,
+            lat,
+            lon,
+          );
+        } else {
+          // Use version with image for mobile
+          final File imageFile = File(_selectedImage!.path);
+
+          // Process the image before uploading
+          final File processedImage = await ImageUtils.resizeAndCompressImage(imageFile);
+
+          newEntityId = await _apiService.createEntity(
+            title,
+            lat,
+            lon,
+            processedImage,
+          );
+        }
 
         // Add new entity to provider
         final newEntity = Entity(
@@ -326,14 +435,19 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
           title: title,
           lat: lat,
           lon: lon,
-          image: 'https://via.placeholder.com/800x600?text=${Uri.encodeComponent(title)}',
+          image: 'pending_image.jpg', // This will be updated when we fetch again
           properties: _locationInfo,
         );
 
         Provider.of<EntityProvider>(context, listen: false).addEntity(newEntity);
 
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Entity created successfully')),
+          SnackBar(
+            content: Text(_isOfflineMode
+                ? 'Entity saved locally and will be synced when online'
+                : 'Entity created successfully'),
+            backgroundColor: _isOfflineMode ? Colors.orange : Colors.green,
+          ),
         );
 
         // Reset form
@@ -343,6 +457,7 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
           _webImageBytes = null;
           _locationInfo = null;
         });
+
         _getCurrentLocation();
       }
     } catch (e) {
@@ -359,239 +474,359 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                _isEditMode ? 'Edit Entity' : 'Create New Entity',
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 20),
-              // Title field
-              TextFormField(
-                controller: _titleController,
-                decoration: InputDecoration(
-                  labelText: 'Title',
-                  border: const OutlineInputBorder(),
-                  suffixIcon: _isLoadingLocationInfo
-                      ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2)
-                  )
-                      : null,
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter a title';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              // Latitude field
-              TextFormField(
-                controller: _latController,
-                decoration: const InputDecoration(
-                  labelText: 'Latitude',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter latitude';
-                  }
-                  try {
-                    final lat = double.parse(value);
-                    if (lat < -90 || lat > 90) {
-                      return 'Latitude must be between -90 and 90';
-                    }
-                  } catch (e) {
-                    return 'Please enter a valid number';
-                  }
-                  return null;
-                },
-                onChanged: (value) {
-                  if (value.isNotEmpty && _lonController.text.isNotEmpty) {
-                    try {
-                      double lat = double.parse(value);
-                      double lon = double.parse(_lonController.text);
-                      _getLocationInfo(lat, lon);
-                    } catch (e) {
-                      // Ignore parsing errors here as they're handled in the validator
-                    }
-                  }
-                },
-              ),
-              const SizedBox(height: 16),
-              // Longitude field
-              TextFormField(
-                controller: _lonController,
-                decoration: const InputDecoration(
-                  labelText: 'Longitude',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter longitude';
-                  }
-                  try {
-                    final lon = double.parse(value);
-                    if (lon < -180 || lon > 180) {
-                      return 'Longitude must be between -180 and 180';
-                    }
-                  } catch (e) {
-                    return 'Please enter a valid number';
-                  }
-                  return null;
-                },
-                onChanged: (value) {
-                  if (value.isNotEmpty && _latController.text.isNotEmpty) {
-                    try {
-                      double lat = double.parse(_latController.text);
-                      double lon = double.parse(value);
-                      _getLocationInfo(lat, lon);
-                    } catch (e) {
-                      // Ignore parsing errors here as they're handled in the validator
-                    }
-                  }
-                },
-              ),
-              const SizedBox(height: 16),
-              // Use current location button
-              ElevatedButton.icon(
-                onPressed: _getCurrentLocation,
-                icon: const Icon(Icons.my_location),
-                label: const Text('Use Current Location'),
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 50),
-                ),
-              ),
-
-              // Display location info if available
-              if (_locationInfo != null && _locationInfo!['features'] != null && _locationInfo!['features'].isNotEmpty)
-                _buildLocationInfo(_locationInfo!),
-
-              const SizedBox(height: 20),
-              // Image selection
-              const Text(
-                'Entity Image:',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              if (_selectedImage != null)
-                _buildSelectedImagePreview()
-              else if (_isEditMode && widget.entityToEdit?.image != null)
-                Container(
-                  width: double.infinity,
-                  height: 200,
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      ApiService.getImageUrl(widget.entityToEdit!.image),
-                      fit: BoxFit.cover,
-                      loadingBuilder: (context, child, loadingProgress) {
-                        if (loadingProgress == null) return child;
-                        return const Center(child: CircularProgressIndicator());
-                      },
-                      errorBuilder: (context, error, stackTrace) {
-                        return const Center(
-                          child: Icon(Icons.error, size: 50, color: Colors.red),
-                        );
-                      },
-                    ),
-                  ),
-                )
-              else
-                Container(
-                  width: double.infinity,
-                  height: 200,
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Center(
-                    child: Text('No image selected'),
-                  ),
-                ),
-              const SizedBox(height: 16),
-              // Image selection buttons
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: _takePhoto,
-                      icon: const Icon(Icons.camera_alt),
-                      label: const Text('Take Photo'),
+                  Text(
+                    _isEditMode ? 'Edit Entity' : 'Create New Entity',
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: _pickImage,
-                      icon: const Icon(Icons.photo_library),
-                      label: const Text('From Gallery'),
+                  const SizedBox(height: 20),
+
+                  // Login required warning
+                  if (!_isLoggedIn)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade100,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.orange.shade300),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(Icons.warning, color: Colors.orange),
+                              SizedBox(width: 8),
+                              Text(
+                                'Login Required',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.orange,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'You must be logged in to create or edit entities. Your changes will not be saved.',
+                          ),
+                          const SizedBox(height: 8),
+                          ElevatedButton(
+                            onPressed: () {
+                              Navigator.pushReplacementNamed(context, '/login');
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orange,
+                            ),
+                            child: const Text('Login Now'),
+                          ),
+                        ],
+                      ),
                     ),
+
+                  // Offline mode warning
+                  if (_isOfflineMode)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade100,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.blue.shade300),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(Icons.cloud_off, color: Colors.blue),
+                              SizedBox(width: 8),
+                              Text(
+                                'Offline Mode',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blue,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'You are currently offline. Your changes will be saved locally and synchronized when you are back online.',
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  // Title field
+                  TextFormField(
+                    controller: _titleController,
+                    decoration: InputDecoration(
+                      labelText: 'Title',
+                      border: const OutlineInputBorder(),
+                      suffixIcon: _isLoadingLocationInfo
+                          ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2)
+                      )
+                          : null,
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please enter a title';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Latitude field
+                  TextFormField(
+                    controller: _latController,
+                    decoration: const InputDecoration(
+                      labelText: 'Latitude',
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please enter latitude';
+                      }
+                      try {
+                        final lat = double.parse(value);
+                        if (lat < -90 || lat > 90) {
+                          return 'Latitude must be between -90 and 90';
+                        }
+                      } catch (e) {
+                        return 'Please enter a valid number';
+                      }
+                      return null;
+                    },
+                    onChanged: (value) {
+                      if (!_isOfflineMode && value.isNotEmpty && _lonController.text.isNotEmpty) {
+                        try {
+                          double lat = double.parse(value);
+                          double lon = double.parse(_lonController.text);
+                          _getLocationInfo(lat, lon);
+                        } catch (e) {
+                          // Ignore parsing errors here as they're handled in the validator
+                        }
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Longitude field
+                  TextFormField(
+                    controller: _lonController,
+                    decoration: const InputDecoration(
+                      labelText: 'Longitude',
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please enter longitude';
+                      }
+                      try {
+                        final lon = double.parse(value);
+                        if (lon < -180 || lon > 180) {
+                          return 'Longitude must be between -180 and 180';
+                        }
+                      } catch (e) {
+                        return 'Please enter a valid number';
+                      }
+                      return null;
+                    },
+                    onChanged: (value) {
+                      if (!_isOfflineMode && value.isNotEmpty && _latController.text.isNotEmpty) {
+                        try {
+                          double lat = double.parse(_latController.text);
+                          double lon = double.parse(value);
+                          _getLocationInfo(lat, lon);
+                        } catch (e) {
+                          // Ignore parsing errors here as they're handled in the validator
+                        }
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Use current location button
+                  ElevatedButton.icon(
+                    onPressed: _getCurrentLocation,
+                    icon: const Icon(Icons.my_location),
+                    label: const Text('Use Current Location'),
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 50),
+                    ),
+                  ),
+
+                  // Display location info if available
+                  if (_locationInfo != null && _locationInfo!['features'] != null && _locationInfo!['features'].isNotEmpty)
+                    _buildLocationInfo(_locationInfo!),
+
+                  const SizedBox(height: 20),
+
+                  // Image selection
+                  const Text(
+                    'Entity Image:',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  if (_selectedImage != null)
+                    _buildSelectedImagePreview()
+                  else if (_isEditMode && widget.entityToEdit?.image != null)
+                    Container(
+                      width: double.infinity,
+                      height: 200,
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.network(
+                          ApiService.getImageUrl(widget.entityToEdit!.image),
+                          fit: BoxFit.cover,
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) return child;
+                            return const Center(child: CircularProgressIndicator());
+                          },
+                          errorBuilder: (context, error, stackTrace) {
+                            return const Center(
+                              child: Icon(Icons.error, size: 50, color: Colors.red),
+                            );
+                          },
+                        ),
+                      ),
+                    )
+                  else
+                    Container(
+                      width: double.infinity,
+                      height: 200,
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Center(
+                        child: Text('No image selected'),
+                      ),
+                    ),
+
+                  const SizedBox(height: 16),
+
+                  // Image selection buttons
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _takePhoto,
+                          icon: const Icon(Icons.camera_alt),
+                          label: const Text('Take Photo'),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _pickImage,
+                          icon: const Icon(Icons.photo_library),
+                          label: const Text('From Gallery'),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  if (kIsWeb)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8.0),
+                      child: Text(
+                        'Note: Camera is not directly supported in web apps. "Take Photo" will open the gallery instead.',
+                        style: TextStyle(
+                          color: Colors.grey.shade700,
+                          fontStyle: FontStyle.italic,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+
+                  const SizedBox(height: 20),
+
+                  // Error message
+                  if (_errorMessage != null)
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade100,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        _errorMessage!,
+                        style: TextStyle(color: Colors.red.shade800),
+                      ),
+                    ),
+
+                  const SizedBox(height: 20),
+
+                  // Submit button
+                  ElevatedButton(
+                    onPressed: _isSubmitting || !_isLoggedIn ? null : _submitForm,
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 50),
+                    ),
+                    child: _isSubmitting
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : Text(_isEditMode ? 'Update Entity' : 'Create Entity'),
                   ),
                 ],
               ),
-              if (kIsWeb)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8.0),
-                  child: Text(
-                    'Note: Camera is not directly supported in web apps. "Take Photo" will open the gallery instead.',
-                    style: TextStyle(
-                      color: Colors.grey.shade700,
-                      fontStyle: FontStyle.italic,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-              const SizedBox(height: 20),
-              // Error message
-              if (_errorMessage != null)
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: Colors.red.shade100,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    _errorMessage!,
-                    style: TextStyle(color: Colors.red.shade800),
-                  ),
-                ),
-              const SizedBox(height: 20),
-              // Submit button
-              ElevatedButton(
-                onPressed: _isSubmitting ? null : _submitForm,
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 50),
-                ),
-                child: _isSubmitting
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : Text(_isEditMode ? 'Update Entity' : 'Create Entity'),
-              ),
-            ],
+            ),
           ),
-        ),
+
+          // Offline mode indicator
+          if (_isOfflineMode)
+            Positioned(
+              top: 10,
+              right: 10,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.7),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    Icon(Icons.cloud_off, color: Colors.white, size: 16),
+                    SizedBox(width: 8),
+                    Text(
+                      'Offline Mode',
+                      style: TextStyle(color: Colors.white, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

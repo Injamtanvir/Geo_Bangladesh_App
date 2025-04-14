@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: geo-bangladesh-api
+    runtime: python
+    buildCommand: "./build.sh"
+    startCommand: "gunicorn geo_bangladesh_api.wsgi:application"
+    envVars:
+      - key: DEBUG
+        value: "False"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false 
+        fromDatabase:
+          name: geo_bangladesh_db
+          property: connectionString
+
+databases:
+  - name: geo_bangladesh_db
+    databaseName: geo_bangladesh
+    user: geo_bangladesh_user
+
+
+
+
+# services:
+#   - type: web
+#     name: geo-bangladesh-api
+#     runtime: python
+#     buildCommand: "./build.sh"
+#     startCommand: "gunicorn geo_bangladesh_api.wsgi:application"
+#     envVars:
+#       - key: DEBUG
+#         value: "False"
+#       - key: SECRET_KEY
+#         generateValue: true
+#       - key: MONGODB_URI
+#         sync: false  # This value will be set manually in the Render dashboard
