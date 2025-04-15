@@ -27,6 +27,7 @@ class _LoginScreenState extends State<LoginScreen> {
   // Check if user is already logged in
   void _checkIfLoggedIn() async {
     await _apiService.initialize();
+
     if (_apiService.isLoggedIn()) {
       // Already logged in, navigate to main screen
       Future.microtask(() {
@@ -92,13 +93,16 @@ class _LoginScreenState extends State<LoginScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 40),
+
               // App logo or icon
               const Icon(
                 Icons.location_on,
                 size: 80,
                 color: Colors.green,
               ),
+
               const SizedBox(height: 20),
+
               const Text(
                 'Bangladesh Geo Entities',
                 textAlign: TextAlign.center,
@@ -107,7 +111,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
+
               const SizedBox(height: 40),
+
               // Username field
               TextFormField(
                 controller: _usernameController,
@@ -123,7 +129,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   return null;
                 },
               ),
+
               const SizedBox(height: 16),
+
               // Password field
               TextFormField(
                 controller: _passwordController,
@@ -141,7 +149,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 },
                 onFieldSubmitted: (_) => _login(),
               ),
+
               const SizedBox(height: 24),
+
               // Error message
               if (_errorMessage != null)
                 Container(
@@ -152,7 +162,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: TextStyle(color: Colors.red.shade800),
                   ),
                 ),
+
               const SizedBox(height: 24),
+
               // Login button
               ElevatedButton(
                 onPressed: _isLoading ? null : _login,
@@ -166,7 +178,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   style: TextStyle(fontSize: 16),
                 ),
               ),
+
               const SizedBox(height: 16),
+
               // Register link
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -180,7 +194,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ],
               ),
+
               const SizedBox(height: 16),
+
               // Continue as guest
               TextButton(
                 onPressed: () {

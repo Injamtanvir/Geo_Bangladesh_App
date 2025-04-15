@@ -1,9 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'dart:io';
 import '../models/entity.dart';
 import '../services/api_service.dart';
 import '../main.dart';
@@ -22,7 +22,6 @@ class _MapScreenState extends State<MapScreen> {
   GoogleMapController? _controller;
   final ApiService _apiService = ApiService();
   final DatabaseHelper _dbHelper = DatabaseHelper();
-
   bool _isLoading = true;
   String _errorMessage = '';
   final Set<Marker> _markers = {};
@@ -35,6 +34,7 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void initState() {
     super.initState();
+    print('MapScreen initState called');
     _checkConnectivity();
     _fetchEntities();
   }
@@ -42,20 +42,25 @@ class _MapScreenState extends State<MapScreen> {
   // Check for internet connectivity
   Future<void> _checkConnectivity() async {
     var connectivityResult = await Connectivity().checkConnectivity();
-    setState(() {
-      _isOfflineMode = connectivityResult == ConnectivityResult.none;
-    });
+
+    if (mounted) {
+      setState(() {
+        _isOfflineMode = connectivityResult == ConnectivityResult.none;
+      });
+    }
   }
 
   // Fetch entities from API or local cache
   Future<void> _fetchEntities() async {
     try {
-      setState(() {
-        _isLoading = true;
-        _errorMessage = '';
-      });
+      print('Fetching entities started');
+      if (mounted) {
+        setState(() {
+          _isLoading = true;
+          _errorMessage = '';
+        });
+      }
 
-      print('Fetching entities');
       final entities = await _apiService.getEntities();
       print('Fetched ${entities.length} entities');
 
@@ -72,6 +77,7 @@ class _MapScreenState extends State<MapScreen> {
       }
     } catch (e) {
       print('Error fetching entities: $e');
+
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -84,6 +90,7 @@ class _MapScreenState extends State<MapScreen> {
   // Create map markers from entities
   void _createMarkers(List<Entity> entities) {
     print('Creating markers for ${entities.length} entities');
+
     Set<Marker> markers = {};
 
     for (var entity in entities) {
@@ -94,6 +101,7 @@ class _MapScreenState extends State<MapScreen> {
       }
 
       print('Creating marker for entity ${entity.id}: ${entity.title}');
+
       final markerId = MarkerId(entity.id.toString());
       final marker = Marker(
         markerId: markerId,
@@ -112,6 +120,7 @@ class _MapScreenState extends State<MapScreen> {
     }
 
     print('Created ${markers.length} markers');
+
     if (mounted) {
       setState(() {
         _markers.clear();
@@ -146,6 +155,7 @@ class _MapScreenState extends State<MapScreen> {
           : Stack(
         children: [
           _buildMap(),
+
           // Offline mode indicator
           if (_isOfflineMode)
             Positioned(
@@ -201,6 +211,7 @@ class _MapScreenState extends State<MapScreen> {
             myLocationEnabled: true,
             myLocationButtonEnabled: true,
           ),
+
           // Overlay with instructions if map doesn't load on web
           Positioned.fill(
             child: Container(
@@ -230,7 +241,7 @@ class _MapScreenState extends State<MapScreen> {
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 32),
                     child: Text(
-                      'For web apps, the Google Maps API key needs to be properly configured and have the correct HTTP referrers',
+                      'For web apps, the Google Maps API key needs to be properly configured',
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 14),
                     ),
@@ -290,9 +301,12 @@ class _MapScreenState extends State<MapScreen> {
               Text('Latitude: ${entity.lat.toStringAsFixed(6)}'),
               Text('Longitude: ${entity.lon.toStringAsFixed(6)}'),
               const SizedBox(height: 16),
+
               if (entity.image != null && entity.image!.isNotEmpty)
                 _buildEntityImage(entity),
+
               const SizedBox(height: 16),
+
               const Center(
                 child: Text(
                   'Tap on the image to enlarge',
@@ -302,10 +316,13 @@ class _MapScreenState extends State<MapScreen> {
                   ),
                 ),
               ),
+
               // Display additional properties if available
               if (entity.properties != null && entity.properties!.isNotEmpty)
                 ..._buildAdditionalProperties(entity.properties!),
+
               const SizedBox(height: 16),
+
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
@@ -361,6 +378,7 @@ class _MapScreenState extends State<MapScreen> {
                           await _apiService.deleteEntity(entity.id!);
                           Provider.of<EntityProvider>(context, listen: false).deleteEntity(entity.id!);
                           _fetchEntities(); // Refresh markers
+
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(content: Text('Entity deleted successfully')),
                           );
@@ -501,22 +519,40 @@ class _MapScreenState extends State<MapScreen> {
             title: Text(title),
           ),
           body: Center(
-            child: InteractiveViewer(
-              panEnabled: true,
-              boundaryMargin: const EdgeInsets.all(20),
-              minScale: 0.5,
-              maxScale: 4,
-              child: isOfflineImage
-                  ? Image.file(
-                File(imagePath),
-                errorBuilder: (context, error, stackTrace) => const Icon(Icons.error),
-              )
-                  : CachedNetworkImage(
-                imageUrl: ApiService.getImageUrl(imagePath),
-                placeholder: (context, url) => const Center(
-                  child: CircularProgressIndicator(),
+            child: isOfflineImage
+                ? Image.file(
+              File(imagePath),
+              errorBuilder: (context, error, stackTrace) => const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
+                    SizedBox(height: 16),
+                    Text(
+                      'Image unavailable',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ],
                 ),
-                errorWidget: (context, url, error) => const Icon(Icons.error),
+              ),
+            )
+                : CachedNetworkImage(
+              imageUrl: ApiService.getImageUrl(imagePath),
+              placeholder: (context, url) => const Center(
+                child: CircularProgressIndicator(),
+              ),
+              errorWidget: (context, url, error) => Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: const [
+                    Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
+                    SizedBox(height: 16),
+                    Text(
+                      'Image unavailable',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

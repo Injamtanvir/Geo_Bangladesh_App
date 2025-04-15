@@ -14,7 +14,7 @@ class GeoEntity(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='entities')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     def __str__(self):
         return self.title
 
@@ -26,6 +26,6 @@ class OfflineImage(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     local_path = models.CharField(max_length=500)
     last_synced = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
         unique_together = ['entity', 'user']

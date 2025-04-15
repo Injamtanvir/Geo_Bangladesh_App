@@ -1,6 +1,6 @@
 # geo_bangladesh
 
-A new Flutter project for MIODTERM PROJECT
+A new Flutter project.
 
 ## Getting Started
 

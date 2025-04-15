@@ -14,6 +14,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 class EntityFormScreen extends StatefulWidget {
   final Entity? entityToEdit;
+
   const EntityFormScreen({Key? key, this.entityToEdit}) : super(key: key);
 
   @override
@@ -54,6 +55,7 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
   // Check if user is logged in
   Future<void> _checkAuthStatus() async {
     await _apiService.initialize();
+
     setState(() {
       _isLoggedIn = _apiService.isLoggedIn();
     });
@@ -75,6 +77,7 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
   // Check for internet connectivity
   Future<void> _checkConnectivity() async {
     var connectivityResult = await Connectivity().checkConnectivity();
+
     setState(() {
       _isOfflineMode = connectivityResult == ConnectivityResult.none;
     });
@@ -151,8 +154,10 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
       } else {
         // Check location permissions for mobile
         LocationPermission permission = await Geolocator.checkPermission();
+
         if (permission == LocationPermission.denied) {
           permission = await Geolocator.requestPermission();
+
           if (permission == LocationPermission.denied) {
             setState(() {
               _errorMessage = 'Location permissions are denied';
@@ -222,6 +227,7 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
               locationData['features'] != null &&
               locationData['features'].isNotEmpty) {
             final feature = locationData['features'][0];
+
             if (feature['properties'] != null) {
               final props = feature['properties'];
               String title = '';
@@ -230,6 +236,7 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
                 title = props['name'];
               } else if (props['street'] != null) {
                 title = props['street'];
+
                 if (props['housenumber'] != null) {
                   title += ' ${props['housenumber']}';
                 }
@@ -252,6 +259,7 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
           _isLoadingLocationInfo = false;
         });
       }
+
       print('Failed to get location info: $e');
     }
   }
@@ -260,6 +268,7 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
   Future<void> _pickImage() async {
     try {
       final ImagePicker picker = ImagePicker();
+
       final XFile? image = await picker.pickImage(
         source: ImageSource.gallery,
         maxWidth: 800,
@@ -271,6 +280,7 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
         if (kIsWeb) {
           // For web, we need to load the image as bytes
           final bytes = await image.readAsBytes();
+
           setState(() {
             _selectedImage = image;
             _webImageBytes = bytes;
@@ -302,6 +312,7 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
       if (Platform.isAndroid || Platform.isIOS) {
         // Try to get camera permission explicitly
         final status = await Permission.camera.request();
+
         if (status.isDenied || status.isPermanentlyDenied) {
           setState(() {
             _errorMessage = 'Camera permission is required to take photos';
@@ -358,6 +369,7 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
       if (_isEditMode && _editEntityId != null) {
         // Update existing entity
         File? imageFile;
+
         if (_selectedImage != null && !kIsWeb) {
           imageFile = File(_selectedImage!.path);
         }
@@ -408,18 +420,15 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
         int newEntityId;
 
         if (kIsWeb) {
-          // Web doesn't support File objects, use version without image
-          newEntityId = await _apiService.createEntityWithoutImage(
-            title,
-            lat,
-            lon,
-          );
+          // For web, use a different approach
+          // Since File isn't available in web, use a custom method
+          newEntityId = await _createEntityWeb(title, lat, lon);
         } else {
           // Use version with image for mobile
           final File imageFile = File(_selectedImage!.path);
 
           // Process the image before uploading
-          final File processedImage = await ImageUtils.resizeAndCompressImage(imageFile);
+          final processedImage = await ImageUtils.resizeAndCompressImage(imageFile);
 
           newEntityId = await _apiService.createEntity(
             title,
@@ -452,6 +461,7 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
 
         // Reset form
         _titleController.clear();
+
         setState(() {
           _selectedImage = null;
           _webImageBytes = null;
@@ -468,6 +478,20 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
       setState(() {
         _isSubmitting = false;
       });
+    }
+  }
+
+  // Create entity for web
+  Future<int> _createEntityWeb(String title, double lat, double lon) async {
+    // For web, we can't use the File class, so we need a different approach
+    // We'll use a MultipartRequest with bytes instead of File
+    try {
+      // This is a simplified version for testing
+      // In a real app, you would need to handle the image bytes properly
+      return await _apiService.createEntityWithoutImage(title, lat, lon);
+    } catch (e) {
+      print('Error creating entity on web: $e');
+      throw e;
     }
   }
 
@@ -605,14 +629,17 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
                       if (value == null || value.isEmpty) {
                         return 'Please enter latitude';
                       }
+
                       try {
                         final lat = double.parse(value);
+
                         if (lat < -90 || lat > 90) {
                           return 'Latitude must be between -90 and 90';
                         }
                       } catch (e) {
                         return 'Please enter a valid number';
                       }
+
                       return null;
                     },
                     onChanged: (value) {
@@ -620,6 +647,7 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
                         try {
                           double lat = double.parse(value);
                           double lon = double.parse(_lonController.text);
+
                           _getLocationInfo(lat, lon);
                         } catch (e) {
                           // Ignore parsing errors here as they're handled in the validator
@@ -641,14 +669,17 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
                       if (value == null || value.isEmpty) {
                         return 'Please enter longitude';
                       }
+
                       try {
                         final lon = double.parse(value);
+
                         if (lon < -180 || lon > 180) {
                           return 'Longitude must be between -180 and 180';
                         }
                       } catch (e) {
                         return 'Please enter a valid number';
                       }
+
                       return null;
                     },
                     onChanged: (value) {
@@ -656,6 +687,7 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
                         try {
                           double lat = double.parse(_latController.text);
                           double lon = double.parse(value);
+
                           _getLocationInfo(lat, lon);
                         } catch (e) {
                           // Ignore parsing errors here as they're handled in the validator
@@ -890,6 +922,7 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
     }
 
     final feature = locationInfo['features'][0];
+
     if (feature['properties'] == null) {
       return const SizedBox.shrink();
     }

@@ -1,127 +1,74 @@
-# Bangladesh Geo Entities
+# Bangladesh Geo App
 
-A Flutter application for managing geographic entities in Bangladesh. This app allows users to create, view, edit, and delete geographic entities with locations on a map.
+A Flutter application for managing geographic entities in Bangladesh. This app allows users to create, view, edit, and delete geographic points of interest on a map centered on Bangladesh.
 
 ## Features
 
-- **Map View**: Display all entities on a Google Map centered on Bangladesh
-- **Entity Form**: Create and edit entities with current GPS location
-- **Entity List**: View all entities in a list with details
-- **User Authentication**: Secure API access with login/registration
-- **Offline Mode**: Cache entities for offline viewing
-- **Image Upload**: Take photos or select from gallery
-- **Location Info**: Get address details using Geoapify
+- **Interactive Map**: View all entities on a Google Map centered on Bangladesh
+- **Entity Management**: Create, edit, and delete geographic entities
+- **Offline Support**: Store and access data locally when offline
+- **Image Handling**: Upload and view images for each location
+- **User Authentication**: Secure login and registration system
+
+## Project Structure
+
+The project is divided into two main parts:
+
+### Backend (Django)
+- REST API for data management
+- MongoDB for data storage
+- Authentication with token-based system
+- Image storage and retrieval
+
+### Frontend (Flutter)
+- Cross-platform mobile application
+- Google Maps integration
+- Camera and gallery integration for images
+- SQLite local database for offline caching
 
 ## Setup Instructions
 
-### Prerequisites
+### Backend Setup
 
-- Flutter SDK (3.0.0 or higher)
-- Android Studio or VS Code with Flutter extensions
-- Android device/emulator or iOS device/simulator
+1. Clone the repository
+2. Navigate to the backend directory: `cd Geo_Bangladesh_App/backend`
+3. Install the requirements: `pip install -r requirements.txt`
+4. Set up environment variables in `.env` file
+5. Run migrations: `python manage.py migrate`
+6. Start the server: `python manage.py runserver`
 
-### Flutter App Setup
+### Frontend Setup
 
-1. Clone the repository:
-   ```
-   git clone https://github.com/your-username/geo_bangladesh.git
-   cd geo_bangladesh
-   ```
+1. Navigate to the frontend directory: `cd Geo_Bangladesh_App/frontend/geo_bangladesh`
+2. Install Flutter dependencies: `flutter pub get`
+3. Update the API endpoints in `lib/services/api_service.dart` to match your backend URL
+4. Run the app: `flutter run`
 
-2. Get dependencies:
-   ```
-   flutter pub get
-   ```
+## API Endpoints
 
-3. Update Google Maps API Key:
-   - Open `android/app/src/main/AndroidManifest.xml`
-   - Replace the API key with your own Google Maps API key
+The app uses the following API endpoints:
 
-4. Update API Endpoint:
-   - Open `lib/services/api_service.dart`
-   - Update the `baseUrl` to your API endpoint (Django backend or the provided endpoint)
-
-5. Run the app:
-   ```
-   flutter run
-   ```
-
-### Django Backend Setup (Optional)
-
-If you want to run your own backend instead of using the provided API:
-
-1. Navigate to Django project folder
-   ```
-   cd backend
-   ```
-
-2. Create a virtual environment:
-   ```
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-3. Install dependencies:
-   ```
-   pip install django djangorestframework django-cors-headers pillow
-   ```
-
-4. Run migrations:
-   ```
-   python manage.py makemigrations
-   python manage.py migrate
-   ```
-
-5. Create a superuser:
-   ```
-   python manage.py createsuperuser
-   ```
-
-6. Start the server:
-   ```
-   python manage.py runserver
-   ```
-
-7. Access the admin panel at http://localhost:8000/admin/
-
-## API Documentation
-
-### Endpoints
-
-- `GET /api.php`: Get all entities
+- `GET /api.php`: Fetch all entities
 - `POST /api.php`: Create a new entity
 - `PUT /api.php`: Update an existing entity
-- `DELETE /api.php?id={id}`: Delete an entity
+- `DELETE /api.php`: Delete an entity
 
-### Authentication Endpoints (Django Backend)
+## Configuration
 
-- `POST /api/login/`: Login with username and password
-- `POST /api/register/`: Register a new user
-- `POST /api/logout/`: Logout (requires authentication)
+- The Google Maps API key should be added to `android/app/src/main/AndroidManifest.xml` and `web/index.html`
+- Update the API base URL in `lib/services/api_service.dart` to point to your backend server
 
-## Technologies Used
+## Troubleshooting
 
-- **Flutter**: Cross-platform UI framework
-- **Google Maps**: Map integration
-- **SQLite**: Local database for offline caching
-- **Django**: Backend API (optional)
-- **Geoapify**: Geocoding and location info
-- **Provider**: State management
-- **HTTP**: API requests
-- **Image Picker**: Camera and gallery integration
+- If you encounter issues with Google Maps on web, ensure you've properly set up your API key in `web/index.html`
+- For authentication issues, check that your token is being properly stored and sent with requests
+- If images fail to load, verify that the base URL for images is correctly configured
 
-## Challenges and Solutions
+## Dependencies
 
-- **Cross-platform Image Handling**: Implemented different strategies for web and mobile
-- **Offline Support**: Created SQLite database to cache entities and images
-- **Authentication**: Implemented token-based auth with secure storage
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Acknowledgements
-
-- BRAC University CSE 489: Mobile Application Development course
-- Google Maps API
-- Geoapify API
+- Flutter 3.0.0+
+- Google Maps Flutter 2.5.0+
+- HTTP 1.1.0+
+- Image Picker 1.0.4+
+- SQLite 2.3.0+
+- Connectivity Plus 5.0.1+

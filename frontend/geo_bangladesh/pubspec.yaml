@@ -1,5 +1,6 @@
 name: geo_bangladesh
 description: A Flutter application for managing geographic entities in Bangladesh.
+
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -25,6 +26,8 @@ dependencies:
   connectivity_plus: ^5.0.1
   intl: ^0.18.1
   flutter_secure_storage: ^9.0.0
+  sqflite_common_ffi_web: ^0.3.5
+  http_parser: ^4.0.2
 
 dev_dependencies:
   flutter_test:

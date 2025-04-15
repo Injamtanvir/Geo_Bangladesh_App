@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:sqflite/sqflite.dart';
 import 'screens/main_screen.dart';
@@ -12,15 +13,45 @@ void main() async {
   // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize database
-  final dbHelper = DatabaseHelper();
-  await dbHelper.database;
+  // If you're using the web platform, setup specific configurations
+  if (kIsWeb) {
+    // Web-specific initialization if needed
+    print('Initializing for web platform');
+  }
 
-  // Initialize API service
-  final apiService = ApiService();
-  await apiService.initialize();
+  try {
+    // Initialize database
+    final dbHelper = DatabaseHelper();
+    await dbHelper.database;
+    print('Database initialized successfully');
 
-  runApp(const MyApp());
+    // Initialize API service
+    final apiService = ApiService();
+    await apiService.initialize();
+    print('API service initialized successfully');
+
+    // Enable Flutter error logging
+    FlutterError.onError = (FlutterErrorDetails details) {
+      FlutterError.presentError(details);
+      print('Flutter error: ${details.exception}');
+      print('Stack trace: ${details.stack}');
+    };
+
+    runApp(const MyApp());
+  } catch (e) {
+    print('Error during initialization: $e');
+    // Run with basic error handling to show the error on screen
+    runApp(MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: Text('Initialization Error: $e',
+            style: TextStyle(color: Colors.red),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ),
+    ));
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -51,6 +82,7 @@ class MyApp extends StatelessWidget {
 // Provider to manage entity data across the app
 class EntityProvider extends ChangeNotifier {
   List<Entity> _entities = [];
+
   List<Entity> get entities => _entities;
 
   void setEntities(List<Entity> entities) {

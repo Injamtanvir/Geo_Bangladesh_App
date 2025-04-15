@@ -19,7 +19,6 @@ class EntityListScreen extends StatefulWidget {
 class _EntityListScreenState extends State<EntityListScreen> {
   final ApiService _apiService = ApiService();
   final DatabaseHelper _dbHelper = DatabaseHelper();
-
   bool _isLoading = false;
   bool _isOfflineMode = false;
   bool _isLoggedIn = false;
@@ -36,6 +35,7 @@ class _EntityListScreenState extends State<EntityListScreen> {
   // Check for internet connectivity
   Future<void> _checkConnectivity() async {
     var connectivityResult = await Connectivity().checkConnectivity();
+
     setState(() {
       _isOfflineMode = connectivityResult == ConnectivityResult.none;
     });
@@ -51,6 +51,7 @@ class _EntityListScreenState extends State<EntityListScreen> {
   // Check if user is logged in
   Future<void> _checkAuthStatus() async {
     await _apiService.initialize();
+
     setState(() {
       _isLoggedIn = _apiService.isLoggedIn();
     });
@@ -170,6 +171,7 @@ class _EntityListScreenState extends State<EntityListScreen> {
                           try {
                             await _apiService.deleteEntity(entity.id!);
                             provider.deleteEntity(entity.id!);
+
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(content: Text('${entity.title} deleted')),
                             );
@@ -180,6 +182,7 @@ class _EntityListScreenState extends State<EntityListScreen> {
                                 backgroundColor: Colors.red,
                               ),
                             );
+
                             // Refresh to show the entity again
                             _fetchEntities();
                           }
@@ -208,6 +211,7 @@ class _EntityListScreenState extends State<EntityListScreen> {
                                 );
                                 return;
                               }
+
                               _navigateToEditEntity(entity);
                             },
                           ),
@@ -290,7 +294,9 @@ class _EntityListScreenState extends State<EntityListScreen> {
                     },
                     child: _buildEntityDetailImage(entity),
                   ),
+
                 const SizedBox(height: 16),
+
                 Text('Latitude: ${entity.lat.toStringAsFixed(6)}'),
                 Text('Longitude: ${entity.lon.toStringAsFixed(6)}'),
 
@@ -312,6 +318,7 @@ class _EntityListScreenState extends State<EntityListScreen> {
                 ],
 
                 const SizedBox(height: 8),
+
                 if (entity.image != null && entity.image!.isNotEmpty)
                   const Text(
                     'Tap on the image to view full-screen',
@@ -500,6 +507,7 @@ class _EntityListScreenState extends State<EntityListScreen> {
       },
     );
   }
+
 
   // Show full-screen image with offline support
   void _showFullImage(String title, String imagePath) {

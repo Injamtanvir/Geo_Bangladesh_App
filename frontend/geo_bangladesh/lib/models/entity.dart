@@ -18,7 +18,7 @@ class Entity {
   // Factory method to create an Entity from a JSON map
   factory Entity.fromJson(Map<String, dynamic> json) {
     return Entity(
-      id: json['id'],
+      id: json['id'] is String ? int.parse(json['id']) : json['id'],
       title: json['title'],
       lat: json['lat'] is String ? double.parse(json['lat']) : json['lat'],
       lon: json['lon'] is String ? double.parse(json['lon']) : json['lon'],

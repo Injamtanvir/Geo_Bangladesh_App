@@ -79,12 +79,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 20),
+
               const Icon(
                 Icons.app_registration,
                 size: 80,
                 color: Colors.green,
               ),
+
               const SizedBox(height: 20),
+
               const Text(
                 'Create an Account',
                 textAlign: TextAlign.center,
@@ -93,6 +96,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
+
               const SizedBox(height: 30),
 
               // Username field
@@ -107,12 +111,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   if (value == null || value.isEmpty) {
                     return 'Please enter a username';
                   }
+
                   if (value.length < 3) {
                     return 'Username must be at least 3 characters';
                   }
+
                   return null;
                 },
               ),
+
               const SizedBox(height: 16),
 
               // Email field
@@ -130,9 +137,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       return 'Please enter a valid email';
                     }
                   }
+
                   return null;
                 },
               ),
+
               const SizedBox(height: 16),
 
               // Password field
@@ -148,12 +157,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   if (value == null || value.isEmpty) {
                     return 'Please enter a password';
                   }
+
                   if (value.length < 6) {
                     return 'Password must be at least 6 characters';
                   }
+
                   return null;
                 },
               ),
+
               const SizedBox(height: 16),
 
               // Confirm password field
@@ -169,9 +181,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   if (value == null || value.isEmpty) {
                     return 'Please confirm your password';
                   }
+
                   if (value != _passwordController.text) {
                     return 'Passwords do not match';
                   }
+
                   return null;
                 },
               ),

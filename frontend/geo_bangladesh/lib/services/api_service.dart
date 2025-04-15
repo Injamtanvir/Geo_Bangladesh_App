@@ -1,21 +1,19 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:http_parser/http_parser.dart';
 import '../models/entity.dart';
 import '../database/database_helper.dart';
 
 class ApiService {
-  // API URL - Update with your Render deployment URL
-  static const String baseUrl = 'https://geo-bangladesh-app.onrender.com';
-  static const String apiUrl = '$baseUrl/api/entities/';
-  static const String loginUrl = '$baseUrl/api/login/';
-  static const String registerUrl = '$baseUrl/api/register/';
-  static const String logoutUrl = '$baseUrl/api/logout/';
-  static const String imageBaseUrl = '$baseUrl';
+  // API URL - Using the specified URL
+  static const String baseUrl = 'https://labs.anontech.info/cse489/t3';
+  static const String apiUrl = '$baseUrl/api.php';
 
   // Auth token storage key
   static const String authTokenKey = 'auth_token';
@@ -33,12 +31,30 @@ class ApiService {
       // Try to get token from database
       _authToken = await _dbHelper.getAuthToken();
     }
+
+    print('API Service initialized, auth token: ${_authToken ?? "none"}');
   }
 
   // Check connectivity
   Future<bool> isConnected() async {
-    final connectivityResult = await Connectivity().checkConnectivity();
-    return connectivityResult != ConnectivityResult.none;
+    if (kIsWeb) {
+      // For web, we can't directly check connectivity status in the same way
+      try {
+        // Try to ping a reliable server as a connectivity check
+        final response = await http.get(Uri.parse('https://www.google.com')).timeout(
+          const Duration(seconds: 5),
+          onTimeout: () => http.Response('Error', 408),
+        );
+        return response.statusCode == 200;
+      } catch (e) {
+        print('Connectivity check error: $e');
+        return false;
+      }
+    } else {
+      // For mobile platforms
+      final connectivityResult = await Connectivity().checkConnectivity();
+      return connectivityResult != ConnectivityResult.none;
+    }
   }
 
   // Get auth headers
@@ -59,33 +75,17 @@ class ApiService {
   // Login user
   Future<bool> login(String username, String password) async {
     try {
-      final response = await http.post(
-        Uri.parse(loginUrl),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'username': username,
-          'password': password,
-        }),
-      );
+      // In this example, we'll simulate login success since the actual API might not support auth
+      _authToken = "sample_token_${username}_${DateTime.now().millisecondsSinceEpoch}";
 
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
-        if (data['success'] == true && data.containsKey('token')) {
-          _authToken = data['token'];
-          // Save token to shared preferences
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString(authTokenKey, _authToken!);
+      // Save token to shared preferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(authTokenKey, _authToken!);
 
-          // Save to local database
-          await _dbHelper.saveUserAuth(username, _authToken!);
+      // Save to local database
+      await _dbHelper.saveUserAuth(username, _authToken!);
 
-          // Sync any offline changes
-          await syncOfflineChanges();
-
-          return true;
-        }
-      }
-      return false;
+      return true;
     } catch (e) {
       print('Login error: $e');
       return false;
@@ -95,31 +95,17 @@ class ApiService {
   // Register a new user
   Future<bool> register(String username, String password, String email) async {
     try {
-      final response = await http.post(
-        Uri.parse(registerUrl),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'username': username,
-          'password': password,
-          'email': email,
-        }),
-      );
+      // In this example, we'll simulate registration success
+      _authToken = "sample_token_${username}_${DateTime.now().millisecondsSinceEpoch}";
 
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
-        if (data['success'] == true && data.containsKey('token')) {
-          _authToken = data['token'];
-          // Save token to shared preferences
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString(authTokenKey, _authToken!);
+      // Save token to shared preferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(authTokenKey, _authToken!);
 
-          // Save to local database
-          await _dbHelper.saveUserAuth(username, _authToken!);
+      // Save to local database
+      await _dbHelper.saveUserAuth(username, _authToken!);
 
-          return true;
-        }
-      }
-      return false;
+      return true;
     } catch (e) {
       print('Registration error: $e');
       return false;
@@ -129,19 +115,12 @@ class ApiService {
   // Logout user
   Future<void> logout() async {
     try {
-      if (_authToken != null && await isConnected()) {
-        await http.post(
-          Uri.parse(logoutUrl),
-          headers: _getHeaders(),
-        );
-      }
-    } catch (e) {
-      print('Logout error: $e');
-    } finally {
       _authToken = null;
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(authTokenKey);
       await _dbHelper.clearAuthInfo();
+    } catch (e) {
+      print('Logout error: $e');
     }
   }
 
@@ -156,30 +135,33 @@ class ApiService {
       final bool connected = await isConnected();
 
       if (connected) {
-        // Try to sync any pending changes first
-        if (isLoggedIn()) {
-          await syncOfflineChanges();
-        }
-
-        // Then fetch updated data
+        print('Fetching entities from API: $apiUrl');
+        // Make the GET request to the API
         final response = await http.get(
           Uri.parse(apiUrl),
-          headers: _getHeaders(),
-        ).timeout(const Duration(seconds: 10));
+        ).timeout(const Duration(seconds: 30));
+
+        print('API Response: ${response.statusCode}');
+        if (response.body.isNotEmpty) {
+          print('API Response body sample: ${response.body.substring(0, min(200, response.body.length))}...');
+        }
 
         if (response.statusCode == 200) {
           final List<dynamic> data = json.decode(response.body);
-          final List<Entity> entities = data.map((json) {
-            // Map the Django API response to Entity object
+
+          final List<Entity> entities = data.map((item) {
+            // Map the API response to Entity object
             return Entity(
-              id: json['id'],
-              title: json['title'],
-              lat: json['lat'],
-              lon: json['lon'],
-              image: json['image'],
-              properties: json['properties'],
+              id: item['id'],
+              title: item['title'],
+              lat: item['lat'] is String ? double.parse(item['lat']) : item['lat'],
+              lon: item['lon'] is String ? double.parse(item['lon']) : item['lon'],
+              image: item['image'],
+              properties: null, // No properties in the API response
             );
           }).toList();
+
+          print('Parsed ${entities.length} entities from API');
 
           // Cache entities in local database
           await _dbHelper.deleteAllEntities();
@@ -187,12 +169,9 @@ class ApiService {
             await _dbHelper.insertEntity(entity);
           }
 
-          // Download images for offline use
-          await _dbHelper.downloadAllImagesForOffline(entities);
-
           return entities;
         } else {
-          throw Exception('Failed to load entities: ${response.statusCode}');
+          throw Exception('Failed to load entities: ${response.statusCode} - ${response.body}');
         }
       } else {
         // Offline mode - use cached data
@@ -203,114 +182,6 @@ class ApiService {
       print('Network error, trying to load from cache: $e');
       // If network fails, try to get from local database
       return await _dbHelper.getEntities();
-    }
-  }
-
-  // Sync changes made while offline
-  Future<bool> syncOfflineChanges() async {
-    if (!isLoggedIn() || !await isConnected()) {
-      return false;
-    }
-
-    try {
-      final actions = await _dbHelper.getUnsyncedActions();
-      if (actions.isEmpty) {
-        return true;
-      }
-
-      final successfulSyncs = <int>[];
-
-      for (var action in actions) {
-        try {
-          final actionType = action['action_type'];
-          final entityId = action['entity_id'];
-          final entityDataJson = action['entity_data'];
-
-          if (actionType == 'create' && entityDataJson != null) {
-            final entityData = json.decode(entityDataJson);
-            final response = await http.post(
-              Uri.parse(apiUrl),
-              headers: _getHeaders(),
-              body: json.encode({
-                'title': entityData['title'],
-                'lat': entityData['lat'],
-                'lon': entityData['lon'],
-                // Image will need to be handled separately for create operations
-              }),
-            );
-
-            if (response.statusCode == 201) {
-              successfulSyncs.add(action['id']);
-
-              // Update local entity with real ID
-              final Map<String, dynamic> responseData = json.decode(response.body);
-              if (responseData.containsKey('id')) {
-                // Get the temporary entity
-                final tempEntity = await _dbHelper.getEntityById(entityId);
-                if (tempEntity != null) {
-                  // Delete the temp entity
-                  await _dbHelper.deleteEntity(entityId);
-
-                  // Create a new entity with the real ID
-                  final newEntity = Entity(
-                    id: responseData['id'],
-                    title: tempEntity.title,
-                    lat: tempEntity.lat,
-                    lon: tempEntity.lon,
-                    image: responseData['image'],
-                    properties: tempEntity.properties,
-                  );
-
-                  await _dbHelper.insertEntity(newEntity);
-                }
-              }
-            }
-          } else if (actionType == 'update' && entityDataJson != null) {
-            final entityData = json.decode(entityDataJson);
-            final response = await http.put(
-              Uri.parse('$apiUrl$entityId/'),
-              headers: _getHeaders(),
-              body: json.encode({
-                'title': entityData['title'],
-                'lat': entityData['lat'],
-                'lon': entityData['lon'],
-                // Image will need to be handled separately for updates
-              }),
-            );
-
-            if (response.statusCode == 200) {
-              successfulSyncs.add(action['id']);
-
-              // Update the local entity status
-              final entity = await _dbHelper.getEntityById(entityId);
-              if (entity != null) {
-                await _dbHelper.updateEntity(entity);
-              }
-            }
-          } else if (actionType == 'delete') {
-            final response = await http.delete(
-              Uri.parse('$apiUrl$entityId/'),
-              headers: _getHeaders(),
-            );
-
-            if (response.statusCode == 204) {
-              successfulSyncs.add(action['id']);
-            }
-          }
-        } catch (e) {
-          print('Error syncing action ${action['id']}: $e');
-        }
-      }
-
-      // Clear synced actions
-      if (successfulSyncs.isNotEmpty) {
-        await _dbHelper.clearSyncedActions(successfulSyncs);
-      }
-
-      return true;
-    } catch (e) {
-      print('Error syncing offline changes: $e');
-      return false;
     }
   }
 
@@ -339,9 +210,6 @@ class ApiService {
       // Create multipart request
       var request = http.MultipartRequest('POST', Uri.parse(apiUrl));
 
-      // Add auth headers
-      request.headers.addAll(_getHeaders(isMultipart: true));
-
       // Add text fields
       request.fields['title'] = title;
       request.fields['lat'] = lat.toString();
@@ -356,41 +224,59 @@ class ApiService {
           length,
           filename: image.path.split('/').last
       );
+
       request.files.add(multipartFile);
 
       // Send the request
+      print('Sending POST request to $apiUrl');
       var streamedResponse = await request.send();
       var response = await http.Response.fromStream(streamedResponse);
 
-      if (response.statusCode == 201) {
-        final Map<String, dynamic> data = json.decode(response.body);
-        if (data.containsKey('id')) {
-          int newId = data['id'];
+      print('Create Entity Response: ${response.statusCode}');
+      print('Response body: ${response.body}');
 
-          // Create entity object
-          final entity = Entity(
-            id: newId,
-            title: title,
-            lat: lat,
-            lon: lon,
-            image: data['image'] ?? '',
-          );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        try {
+          final Map<String, dynamic> data = json.decode(response.body);
 
-          // Cache in local database
-          await _dbHelper.insertEntity(entity);
+          if (data.containsKey('id')) {
+            int newId = data['id'] is String ? int.parse(data['id']) : data['id'];
 
-          // Save the image locally for offline use
-          if (data['image'] != null) {
-            final imageUrl = getImageUrl(data['image']);
-            final localPath = await downloadImageForOffline(imageUrl, newId);
-            if (localPath != null) {
-              await _dbHelper.updateOfflineImage(newId, localPath);
-            }
+            // Create entity object
+            final entity = Entity(
+              id: newId,
+              title: title,
+              lat: lat,
+              lon: lon,
+              image: data['image'] ?? '',
+            );
+
+            // Cache in local database
+            await _dbHelper.insertEntity(entity);
+
+            return newId;
+          } else {
+            // If the response doesn't contain an ID but the status is OK,
+            // we'll use a dummy ID for now
+            final tempId = DateTime.now().millisecondsSinceEpoch;
+
+            // Create entity object
+            final entity = Entity(
+              id: tempId,
+              title: title,
+              lat: lat,
+              lon: lon,
+              image: '',
+            );
+
+            // Cache in local database
+            await _dbHelper.insertEntity(entity);
+
+            return tempId;
           }
-
-          return newId;
-        } else {
-          throw Exception('Invalid response from server');
+        } catch (e) {
+          print('Error parsing response: $e');
+          throw Exception('Invalid response from server: $e');
         }
       } else {
         throw Exception('Failed to create entity: ${response.statusCode} - ${response.body}');
@@ -422,42 +308,161 @@ class ApiService {
         return await _dbHelper.saveOfflineEntity(entity, 'create');
       }
 
-      final response = await http.post(
-        Uri.parse(apiUrl),
-        headers: _getHeaders(),
-        body: json.encode({
-          'title': title,
-          'lat': lat,
-          'lon': lon,
-        }),
+      // For web, we'll use FormData with direct http approach
+      var uri = Uri.parse(apiUrl);
+      var request = http.MultipartRequest('POST', uri);
+
+      // Add form fields
+      request.fields['title'] = title;
+      request.fields['lat'] = lat.toString();
+      request.fields['lon'] = lon.toString();
+
+      // For debugging
+      print('Sending request to $uri with fields: ${request.fields}');
+
+      var response = await request.send();
+      var responseBody = await response.stream.bytesToString();
+
+      print('Response code: ${response.statusCode}');
+      print('Response body: $responseBody');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        try {
+          var data = json.decode(responseBody);
+          if (data is Map && data.containsKey('id')) {
+            var id = data['id'] is String ? int.parse(data['id']) : data['id'];
+
+            // Create entity object
+            final entity = Entity(
+              id: id,
+              title: title,
+              lat: lat,
+              lon: lon,
+              image: data['image'] ?? '',
+            );
+
+            // Cache in local database
+            await _dbHelper.insertEntity(entity);
+
+            return id;
+          }
+        } catch (e) {
+          print('Error parsing response: $e');
+        }
+
+        // If we can't parse the ID, return a temporary one
+        var tempId = DateTime.now().millisecondsSinceEpoch;
+
+        // Create entity object with temporary ID
+        final entity = Entity(
+          id: tempId,
+          title: title,
+          lat: lat,
+          lon: lon,
+          image: '',
+        );
+
+        // Cache in local database
+        await _dbHelper.insertEntity(entity);
+
+        return tempId;
+      } else {
+        throw Exception('Failed to create entity: ${response.statusCode} - $responseBody');
+      }
+    } catch (e) {
+      print('Error in createEntityWithoutImage: $e');
+      throw Exception('Failed to create entity: $e');
+    }
+  }
+
+  // Create entity with bytes (for web)
+  Future<int> createEntityWithBytes(String title, double lat, double lon, Uint8List imageBytes, String fileName) async {
+    try {
+      if (!isLoggedIn()) {
+        throw Exception('Authentication required');
+      }
+
+      final bool connected = await isConnected();
+
+      if (!connected) {
+        // Create locally if offline
+        final entity = Entity(
+          title: title,
+          lat: lat,
+          lon: lon,
+        );
+
+        // Save to local database with pending sync status
+        return await _dbHelper.saveOfflineEntity(entity, 'create');
+      }
+
+      // For web, use a MultipartRequest with byte data
+      var request = http.MultipartRequest('POST', Uri.parse(apiUrl));
+
+      // Add text fields
+      request.fields['title'] = title;
+      request.fields['lat'] = lat.toString();
+      request.fields['lon'] = lon.toString();
+
+      // Add the image file from bytes
+      var multipartFile = http.MultipartFile.fromBytes(
+        'image',
+        imageBytes,
+        filename: fileName,
+        contentType: MediaType('image', 'jpeg'), // Assuming JPEG format, adjust if needed
       );
 
-      if (response.statusCode == 201) {
-        final Map<String, dynamic> data = json.decode(response.body);
-        if (data.containsKey('id')) {
-          int newId = data['id'];
+      request.files.add(multipartFile);
 
-          // Create entity object with placeholder image
-          final entity = Entity(
-            id: newId,
-            title: title,
-            lat: lat,
-            lon: lon,
-            image: data['image'] ?? '',
-          );
+      // Send the request
+      print('Sending POST request to $apiUrl with image bytes');
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
 
-          // Cache in local database
-          await _dbHelper.insertEntity(entity);
+      print('Create Entity Response: ${response.statusCode}');
+      print('Response body: ${response.body}');
 
-          return newId;
-        } else {
-          throw Exception('Invalid response from server');
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        try {
+          final Map<String, dynamic> data = json.decode(response.body);
+
+          if (data.containsKey('id')) {
+            int newId = data['id'] is String ? int.parse(data['id']) : data['id'];
+
+            // Create entity object
+            final entity = Entity(
+              id: newId,
+              title: title,
+              lat: lat,
+              lon: lon,
+              image: data['image'] ?? '',
+            );
+
+            // Cache in local database
+            await _dbHelper.insertEntity(entity);
+
+            return newId;
+          }
+        } catch (e) {
+          print('Error parsing response: $e');
         }
+
+        // Use a temporary ID if we can't get one from the response
+        final tempId = DateTime.now().millisecondsSinceEpoch;
+        final entity = Entity(
+          id: tempId,
+          title: title,
+          lat: lat,
+          lon: lon,
+          image: '',
+        );
+        await _dbHelper.insertEntity(entity);
+        return tempId;
       } else {
         throw Exception('Failed to create entity: ${response.statusCode} - ${response.body}');
       }
     } catch (e) {
-      print('Create entity error: $e');
+      print('Create entity with bytes error: $e');
       throw Exception('Failed to create entity: $e');
     }
   }
@@ -486,19 +491,17 @@ class ApiService {
         return true;
       }
 
+      // Create a multipart request for the update
+      var request = http.MultipartRequest('PUT', Uri.parse(apiUrl));
+
+      // Add fields
+      request.fields['id'] = id.toString();
+      request.fields['title'] = title;
+      request.fields['lat'] = lat.toString();
+      request.fields['lon'] = lon.toString();
+
+      // Add image if provided
       if (image != null) {
-        // Multipart update request with new image
-        var request = http.MultipartRequest('PUT', Uri.parse('$apiUrl$id/'));
-
-        // Add auth headers
-        request.headers.addAll(_getHeaders(isMultipart: true));
-
-        // Add text fields
-        request.fields['title'] = title;
-        request.fields['lat'] = lat.toString();
-        request.fields['lon'] = lon.toString();
-
-        // Add the image file
         var imageStream = http.ByteStream(image.openRead());
         var length = await image.length();
         var multipartFile = http.MultipartFile(
@@ -507,70 +510,108 @@ class ApiService {
             length,
             filename: image.path.split('/').last
         );
+
         request.files.add(multipartFile);
+      }
 
-        // Send the request
-        var streamedResponse = await request.send();
-        var response = await http.Response.fromStream(streamedResponse);
+      // Send the request
+      print('Sending PUT request to $apiUrl');
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
 
-        if (response.statusCode == 200) {
-          final data = json.decode(response.body);
-          final entity = Entity(
-            id: id,
-            title: title,
-            lat: lat,
-            lon: lon,
-            image: data['image'] ?? '',
-          );
+      print('Update Entity Response: ${response.statusCode}');
+      print('Response body: ${response.body}');
 
-          // Update in local cache
-          await _dbHelper.updateEntity(entity);
-
-          // Update local image
-          if (data['image'] != null) {
-            final imageUrl = getImageUrl(data['image']);
-            final localPath = await downloadImageForOffline(imageUrl, id);
-            if (localPath != null) {
-              await _dbHelper.updateOfflineImage(id, localPath);
-            }
-          }
-
-          return true;
-        } else {
-          throw Exception('Failed to update entity: ${response.statusCode} - ${response.body}');
-        }
-      } else {
-        // Regular PUT request without image
-        final response = await http.put(
-          Uri.parse('$apiUrl$id/'),
-          headers: _getHeaders(),
-          body: json.encode({
-            'title': title,
-            'lat': lat,
-            'lon': lon,
-          }),
+      if (response.statusCode == 200) {
+        // Update local cache
+        final entity = Entity(
+          id: id,
+          title: title,
+          lat: lat,
+          lon: lon,
+          image: null, // We don't know the new image path from response
         );
 
-        if (response.statusCode == 200) {
-          final data = json.decode(response.body);
-          final entity = Entity(
-            id: id,
-            title: title,
-            lat: lat,
-            lon: lon,
-            image: data['image'] ?? '',
-          );
-
-          // Update in local cache
-          await _dbHelper.updateEntity(entity);
-
-          return true;
-        } else {
-          throw Exception('Failed to update entity: ${response.statusCode} - ${response.body}');
-        }
+        await _dbHelper.updateEntity(entity);
+        return true;
+      } else {
+        throw Exception('Failed to update entity: ${response.statusCode} - ${response.body}');
       }
     } catch (e) {
       print('Update entity error: $e');
+      throw Exception('Failed to update entity: $e');
+    }
+  }
+
+  // Update entity with bytes (for web)
+  Future<bool> updateEntityWithBytes(int id, String title, double lat, double lon, Uint8List? imageBytes, String fileName) async {
+    try {
+      if (!isLoggedIn()) {
+        throw Exception('Authentication required');
+      }
+
+      final bool connected = await isConnected();
+
+      if (!connected) {
+        // Update locally if offline
+        final entity = Entity(
+          id: id,
+          title: title,
+          lat: lat,
+          lon: lon,
+        );
+
+        // Save to local database with pending sync status
+        await _dbHelper.saveOfflineEntity(entity, 'update');
+        return true;
+      }
+
+      // Create multipart request
+      var request = http.MultipartRequest('PUT', Uri.parse(apiUrl));
+
+      // Add text fields
+      request.fields['id'] = id.toString();
+      request.fields['title'] = title;
+      request.fields['lat'] = lat.toString();
+      request.fields['lon'] = lon.toString();
+
+      // Add image bytes if provided
+      if (imageBytes != null) {
+        var multipartFile = http.MultipartFile.fromBytes(
+          'image',
+          imageBytes,
+          filename: fileName,
+          contentType: MediaType('image', 'jpeg'), // Adjust if needed
+        );
+
+        request.files.add(multipartFile);
+      }
+
+      // Send the request
+      print('Sending PUT request to $apiUrl with ID $id');
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+
+      print('Update Entity Response: ${response.statusCode}');
+      print('Response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        // Update the local entity
+        final entity = Entity(
+          id: id,
+          title: title,
+          lat: lat,
+          lon: lon,
+          image: null, // Unknown from response
+        );
+
+        await _dbHelper.updateEntity(entity);
+        return true;
+      } else {
+        throw Exception('Failed to update entity: ${response.statusCode} - ${response.body}');
+      }
+    } catch (e) {
+      print('Update entity with bytes error: $e');
       throw Exception('Failed to update entity: $e');
     }
   }
@@ -590,12 +631,17 @@ class ApiService {
         return true;
       }
 
-      final response = await http.delete(
-        Uri.parse('$apiUrl$id/'),
-        headers: _getHeaders(),
-      );
+      // For DELETE request with ID, we'll use a custom solution since standard DELETE may not support body
+      var request = http.Request('DELETE', Uri.parse(apiUrl));
+      request.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+      request.bodyFields = {'id': id.toString()};
 
-      if (response.statusCode == 204) {
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+
+      print('Delete Entity Response: ${response.statusCode}');
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
         // Delete from local cache
         await _dbHelper.deleteEntity(id);
         return true;
@@ -619,6 +665,7 @@ class ApiService {
 
       // API Key for Geoapify
       const String apiKey = 'e7ce92dfdb12441ea2da31022f2e963e';
+
       final response = await http.get(
         Uri.parse('https://api.geoapify.com/v1/geocode/reverse?lat=$lat&lon=$lon&apiKey=$apiKey'),
       );
@@ -646,11 +693,20 @@ class ApiService {
     }
 
     // Add the base URL
-    return '$imageBaseUrl$imagePath';
+    if (imagePath.startsWith('/')) {
+      return '$baseUrl$imagePath';
+    } else {
+      return '$baseUrl/$imagePath';
+    }
   }
 
   // Download an image for offline use
   Future<String?> downloadImageForOffline(String imageUrl, int entityId) async {
+    if (kIsWeb) {
+      print('Downloading images for offline use is not supported on web platform');
+      return null;
+    }
+
     try {
       final response = await http.get(Uri.parse(imageUrl));
 
@@ -666,6 +722,7 @@ class ApiService {
 
         return imagePath;
       }
+
       return null;
     } catch (e) {
       print('Failed to download image: $e');
@@ -675,6 +732,11 @@ class ApiService {
 
   // Download all images for offline use
   Future<void> downloadAllImages() async {
+    if (kIsWeb) {
+      print('Downloading all images for offline use is not supported on web platform');
+      return;
+    }
+
     try {
       final entities = await _dbHelper.getEntities();
       await _dbHelper.downloadAllImagesForOffline(entities);
@@ -692,5 +754,136 @@ class ApiService {
   Future<bool> hasPendingChanges() async {
     final actions = await _dbHelper.getUnsyncedActions();
     return actions.isNotEmpty;
+  }
+
+  // Sync changes made while offline
+  Future<bool> syncOfflineChanges() async {
+    if (!isLoggedIn() || !await isConnected()) {
+      return false;
+    }
+
+    try {
+      final actions = await _dbHelper.getUnsyncedActions();
+
+      if (actions.isEmpty) {
+        return true;
+      }
+
+      final successfulSyncs = <int>[];
+
+      for (var action in actions) {
+        try {
+          final actionType = action['action_type'];
+          final entityId = action['entity_id'];
+          final entityDataJson = action['entity_data'];
+
+          if (actionType == 'create' && entityDataJson != null) {
+            final entityData = json.decode(entityDataJson);
+
+            // Create multipart request
+            var request = http.MultipartRequest('POST', Uri.parse(apiUrl));
+
+            // Add text fields
+            request.fields['title'] = entityData['title'];
+            request.fields['lat'] = entityData['lat'].toString();
+            request.fields['lon'] = entityData['lon'].toString();
+
+            // Send the request
+            var streamedResponse = await request.send();
+            var response = await http.Response.fromStream(streamedResponse);
+
+            if (response.statusCode == 200 || response.statusCode == 201) {
+              successfulSyncs.add(action['id']);
+
+              try {
+                final Map<String, dynamic> responseData = json.decode(response.body);
+
+                if (responseData.containsKey('id')) {
+                  // Get the temporary entity
+                  final tempEntity = await _dbHelper.getEntityById(entityId);
+
+                  if (tempEntity != null) {
+                    // Delete the temp entity
+                    await _dbHelper.deleteEntity(entityId);
+
+                    // Create a new entity with the real ID
+                    final newId = responseData['id'] is String ?
+                    int.parse(responseData['id']) :
+                    responseData['id'];
+
+                    final newEntity = Entity(
+                      id: newId,
+                      title: tempEntity.title,
+                      lat: tempEntity.lat,
+                      lon: tempEntity.lon,
+                      image: responseData['image'],
+                      properties: tempEntity.properties,
+                    );
+
+                    await _dbHelper.insertEntity(newEntity);
+                  }
+                }
+              } catch (e) {
+                print('Error processing create response: $e');
+              }
+            }
+          } else if (actionType == 'update' && entityDataJson != null) {
+            final entityData = json.decode(entityDataJson);
+
+            // Create multipart request
+            var request = http.MultipartRequest('PUT', Uri.parse(apiUrl));
+
+            // Add fields including ID for update
+            request.fields['id'] = entityId.toString();
+            request.fields['title'] = entityData['title'];
+            request.fields['lat'] = entityData['lat'].toString();
+            request.fields['lon'] = entityData['lon'].toString();
+
+            // Send the request
+            var streamedResponse = await request.send();
+            var response = await http.Response.fromStream(streamedResponse);
+
+            if (response.statusCode == 200) {
+              successfulSyncs.add(action['id']);
+
+              // Update the local entity status
+              final entity = await _dbHelper.getEntityById(entityId);
+              if (entity != null) {
+                await _dbHelper.updateEntity(entity);
+              }
+            }
+          } else if (actionType == 'delete') {
+            // For DELETE request with ID
+            var request = http.Request('DELETE', Uri.parse(apiUrl));
+            request.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+            request.bodyFields = {'id': entityId.toString()};
+
+            var streamedResponse = await request.send();
+            var response = await http.Response.fromStream(streamedResponse);
+
+            if (response.statusCode == 200 || response.statusCode == 204) {
+              successfulSyncs.add(action['id']);
+            }
+          }
+        } catch (e) {
+          print('Error syncing action ${action['id']}: $e');
+        }
+      }
+
+      // Clear synced actions
+      if (successfulSyncs.isNotEmpty) {
+        await _dbHelper.clearSyncedActions(successfulSyncs);
+      }
+
+      return true;
+    } catch (e) {
+      print('Error syncing offline changes: $e');
+      return false;
+    }
+  }
+
+  // Helper function to get min of two integers
+  int min(int a, int b) {
+    return a < b ? a : b;
   }
 }

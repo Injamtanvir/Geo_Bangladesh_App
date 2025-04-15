@@ -14,7 +14,6 @@ class LoginView(ObtainAuthToken):
     def post(self, request, *args, **kwargs):
         username = request.data.get('username')
         password = request.data.get('password')
-        
         user = authenticate(username=username, password=password)
         
         if user:
@@ -98,19 +97,16 @@ class GeoEntityViewSet(viewsets.ModelViewSet):
     
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
-        
         # Check if the user is the owner of the entity
         if instance.user != request.user:
             return Response({
                 'success': False,
                 'error': 'You can only update your own entities'
             }, status=status.HTTP_403_FORBIDDEN)
-        
         return super().update(request, *args, **kwargs)
     
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
-        
         # Check if the user is the owner of the entity
         if instance.user != request.user:
             return Response({

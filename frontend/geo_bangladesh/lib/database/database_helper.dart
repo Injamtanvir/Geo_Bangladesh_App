@@ -1,15 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/entity.dart';
+import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper._internal();
   factory DatabaseHelper() => _instance;
-
   static Database? _database;
 
   DatabaseHelper._internal();
@@ -18,46 +19,105 @@ class DatabaseHelper {
     if (_database != null) return _database!;
 
     // Initialize the database
-    _database = await _initDatabase();
+    if (kIsWeb) {
+      _database = await _initWebDatabase();
+    } else {
+      _database = await _initDatabase();
+    }
+
     return _database!;
   }
 
-  // Create and open the database
+  // Create and open the database for mobile platforms
   Future<Database> _initDatabase() async {
+    print('Initializing mobile database');
     String path = join(await getDatabasesPath(), 'geo_bangladesh.db');
-
     return await openDatabase(
       path,
-      version: 2,  // Increased version for schema update
+      version: 2, // Increased version for schema update
       onCreate: (Database db, int version) async {
-        // Create entity table
-        await db.execute('''
-          CREATE TABLE entities (
-            id INTEGER PRIMARY KEY,
-            title TEXT NOT NULL,
-            lat REAL NOT NULL,
-            lon REAL NOT NULL,
-            image TEXT,
-            properties TEXT,
-            offline_image_path TEXT,
-            last_updated INTEGER,
-            sync_status TEXT DEFAULT 'synced'
-          )
-        ''');
+        await _createTables(db);
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        await _upgradeDatabase(db, oldVersion, newVersion);
+      },
+    );
+  }
 
-        // Create user table for auth
-        await db.execute('''
-          CREATE TABLE users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT NOT NULL UNIQUE,
-            auth_token TEXT,
-            last_login INTEGER
-          )
-        ''');
+  // Initialize web-specific database
+  Future<Database> _initWebDatabase() async {
+    print('Initializing web database');
+    // Use databaseFactory from sqflite_common_ffi_web
+    var factory = databaseFactoryFfiWeb;
+    return await factory.openDatabase(
+      'geo_bangladesh_web.db',
+      options: OpenDatabaseOptions(
+        version: 2,
+        onCreate: (Database db, int version) async {
+          await _createTables(db);
+        },
+        onUpgrade: (db, oldVersion, newVersion) async {
+          await _upgradeDatabase(db, oldVersion, newVersion);
+        },
+      ),
+    );
+  }
 
-        // Create offline actions queue table
+  // Create tables - common method for both mobile and web
+  Future<void> _createTables(Database db) async {
+    print('Creating database tables');
+    // Create entity table
+    await db.execute('''
+      CREATE TABLE entities (
+        id INTEGER PRIMARY KEY,
+        title TEXT NOT NULL,
+        lat REAL NOT NULL,
+        lon REAL NOT NULL,
+        image TEXT,
+        properties TEXT,
+        offline_image_path TEXT,
+        last_updated INTEGER,
+        sync_status TEXT DEFAULT 'synced'
+      )
+    ''');
+
+    // Create user table for auth
+    await db.execute('''
+      CREATE TABLE users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL UNIQUE,
+        auth_token TEXT,
+        last_login INTEGER
+      )
+    ''');
+
+    // Create offline actions queue table
+    await db.execute('''
+      CREATE TABLE offline_actions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        action_type TEXT NOT NULL,
+        entity_id INTEGER,
+        entity_data TEXT,
+        created_at INTEGER NOT NULL
+      )
+    ''');
+  }
+
+  // Upgrade database - common method for both mobile and web
+  Future<void> _upgradeDatabase(Database db, int oldVersion, int newVersion) async {
+    print('Upgrading database from $oldVersion to $newVersion');
+    if (oldVersion < 2) {
+      // Add sync_status column if upgrading from version 1
+      try {
+        await db.execute('ALTER TABLE entities ADD COLUMN sync_status TEXT DEFAULT "synced"');
+      } catch (e) {
+        print('Error adding sync_status column: $e');
+      }
+
+      // Create offline actions queue table if it doesn't exist
+      try {
         await db.execute('''
-          CREATE TABLE offline_actions (
+          CREATE TABLE IF NOT EXISTS offline_actions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             action_type TEXT NOT NULL,
             entity_id INTEGER,
@@ -65,25 +125,10 @@ class DatabaseHelper {
             created_at INTEGER NOT NULL
           )
         ''');
-      },
-      onUpgrade: (db, oldVersion, newVersion) async {
-        if (oldVersion < 2) {
-          // Add sync_status column if upgrading from version 1
-          await db.execute('ALTER TABLE entities ADD COLUMN sync_status TEXT DEFAULT "synced"');
-
-          // Create offline actions queue table if it doesn't exist
-          await db.execute('''
-            CREATE TABLE IF NOT EXISTS offline_actions (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              action_type TEXT NOT NULL,
-              entity_id INTEGER,
-              entity_data TEXT,
-              created_at INTEGER NOT NULL
-            )
-          ''');
-        }
-      },
-    );
+      } catch (e) {
+        print('Error creating offline_actions table: $e');
+      }
+    }
   }
 
   // Insert a new entity into the database
@@ -104,7 +149,7 @@ class DatabaseHelper {
         'title': entity.title,
         'lat': entity.lat,
         'lon': entity.lon,
-        'image': entity.image,
+        'image': entity.image ?? '',
         'properties': propertiesJson,
         'last_updated': DateTime.now().millisecondsSinceEpoch,
         'sync_status': 'synced'
@@ -163,7 +208,7 @@ class DatabaseHelper {
           'title': entity.title,
           'lat': entity.lat,
           'lon': entity.lon,
-          'image': entity.image,
+          'image': entity.image ?? '',
           'properties': propertiesJson,
           'last_updated': DateTime.now().millisecondsSinceEpoch,
           'sync_status': 'unsynced'
@@ -256,12 +301,10 @@ class DatabaseHelper {
   // Get all entities
   Future<List<Entity>> getEntities() async {
     final db = await database;
-
     final List<Map<String, dynamic>> maps = await db.query('entities');
 
     return List.generate(maps.length, (i) {
       Map<String, dynamic>? properties;
-
       if (maps[i]['properties'] != null) {
         try {
           properties = json.decode(maps[i]['properties']);
@@ -284,7 +327,6 @@ class DatabaseHelper {
   // Get unsynced entities
   Future<List<Map<String, dynamic>>> getUnsyncedActions() async {
     final db = await database;
-
     return await db.query(
       'offline_actions',
       orderBy: 'created_at ASC',
@@ -294,7 +336,6 @@ class DatabaseHelper {
   // Clear synced actions
   Future<int> clearSyncedActions(List<int> actionIds) async {
     final db = await database;
-
     return await db.delete(
       'offline_actions',
       where: 'id IN (${actionIds.map((_) => '?').join(',')})',
@@ -305,7 +346,6 @@ class DatabaseHelper {
   // Get a specific entity by ID
   Future<Entity?> getEntityById(int id) async {
     final db = await database;
-
     final List<Map<String, dynamic>> maps = await db.query(
       'entities',
       where: 'id = ?',
@@ -314,7 +354,6 @@ class DatabaseHelper {
 
     if (maps.isNotEmpty) {
       Map<String, dynamic>? properties;
-
       if (maps[0]['properties'] != null) {
         try {
           properties = json.decode(maps[0]['properties']);
@@ -339,7 +378,6 @@ class DatabaseHelper {
   // Update offline image path
   Future<int> updateOfflineImage(int entityId, String path) async {
     final db = await database;
-
     return await db.update(
       'entities',
       {'offline_image_path': path},
@@ -351,7 +389,6 @@ class DatabaseHelper {
   // Get offline image path
   Future<String?> getOfflineImagePath(int entityId) async {
     final db = await database;
-
     final List<Map<String, dynamic>> result = await db.query(
       'entities',
       columns: ['offline_image_path'],
@@ -368,44 +405,54 @@ class DatabaseHelper {
 
   // Download and save all images for offline use
   Future<void> downloadAllImagesForOffline(List<Entity> entities) async {
-    final directory = await getApplicationDocumentsDirectory();
+    if (kIsWeb) {
+      // Web platform doesn't support downloading images for offline use
+      print('Downloading images for offline use is not supported on web platform');
+      return;
+    }
 
-    for (var entity in entities) {
-      if (entity.id != null && entity.image != null && entity.image!.isNotEmpty) {
-        try {
-          // Skip if already downloaded
-          final existingPath = await getOfflineImagePath(entity.id!);
-          if (existingPath != null && File(existingPath).existsSync()) {
-            continue;
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+
+      for (var entity in entities) {
+        if (entity.id != null && entity.image != null && entity.image!.isNotEmpty) {
+          try {
+            // Skip if already downloaded
+            final existingPath = await getOfflineImagePath(entity.id!);
+            if (existingPath != null && File(existingPath).existsSync()) {
+              continue;
+            }
+
+            // Get the image URL
+            final imageUrl = entity.image!.startsWith('http')
+                ? entity.image!
+                : 'https://labs.anontech.info/cse489/t3/${entity.image}';
+
+            // Create HttpClient
+            final httpClient = HttpClient();
+            final request = await httpClient.getUrl(Uri.parse(imageUrl));
+            final response = await request.close();
+
+            if (response.statusCode == 200) {
+              final imageName = 'entity_${entity.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+              final imagePath = '${directory.path}/$imageName';
+
+              // Save the image to disk
+              final file = File(imagePath);
+              await response.pipe(file.openWrite());
+
+              // Update database with offline image path
+              await updateOfflineImage(entity.id!, imagePath);
+            }
+
+            httpClient.close();
+          } catch (e) {
+            print('Failed to download image for entity ${entity.id}: $e');
           }
-
-          // Get the image URL
-          final imageUrl = entity.image!.startsWith('http')
-              ? entity.image!
-              : 'https://geo-bangladesh-app.onrender.com${entity.image}';
-
-          // Create HttpClient
-          final httpClient = HttpClient();
-          final request = await httpClient.getUrl(Uri.parse(imageUrl));
-          final response = await request.close();
-
-          if (response.statusCode == 200) {
-            final imageName = 'entity_${entity.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-            final imagePath = '${directory.path}/$imageName';
-
-            // Save the image to disk
-            final file = File(imagePath);
-            await response.pipe(file.openWrite());
-
-            // Update database with offline image path
-            await updateOfflineImage(entity.id!, imagePath);
-          }
-
-          httpClient.close();
-        } catch (e) {
-          print('Failed to download image for entity ${entity.id}: $e');
         }
       }
+    } catch (e) {
+      print('Error in downloadAllImagesForOffline: $e');
     }
   }
 
@@ -430,7 +477,6 @@ class DatabaseHelper {
   // Get the stored auth token
   Future<String?> getAuthToken() async {
     final db = await database;
-
     final List<Map<String, dynamic>> result = await db.query('users');
 
     if (result.isNotEmpty) {
@@ -443,7 +489,6 @@ class DatabaseHelper {
   // Get the current logged in username
   Future<String?> getUsername() async {
     final db = await database;
-
     final List<Map<String, dynamic>> result = await db.query('users');
 
     if (result.isNotEmpty) {

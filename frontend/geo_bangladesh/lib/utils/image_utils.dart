@@ -27,7 +27,8 @@ class ImageUtils {
       );
 
       if (result == null) {
-        throw Exception('Image compression failed');
+        print('Image compression failed, returning original file');
+        return imageFile;
       }
 
       return File(result.path);

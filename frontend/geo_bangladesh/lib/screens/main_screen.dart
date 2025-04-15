@@ -20,7 +20,6 @@ class _MainScreenState extends State<MainScreen> {
   bool _hasPendingChanges = false;
 
   final ApiService _apiService = ApiService();
-
   late final List<Widget> _screens;
 
   @override
@@ -52,6 +51,7 @@ class _MainScreenState extends State<MainScreen> {
   // Check for pending offline changes
   Future<void> _checkPendingChanges() async {
     final hasPending = await _apiService.hasPendingChanges();
+
     setState(() {
       _hasPendingChanges = hasPending;
     });
@@ -60,6 +60,7 @@ class _MainScreenState extends State<MainScreen> {
   // Check for internet connectivity
   Future<void> _checkConnectivity() async {
     var connectivityResult = await Connectivity().checkConnectivity();
+
     setState(() {
       _isOfflineMode = connectivityResult == ConnectivityResult.none;
     });
@@ -99,6 +100,7 @@ class _MainScreenState extends State<MainScreen> {
     if (_isLoggedIn && !_isOfflineMode && _hasPendingChanges) {
       try {
         final success = await _apiService.syncOfflineChanges();
+
         if (success) {
           setState(() {
             _hasPendingChanges = false;

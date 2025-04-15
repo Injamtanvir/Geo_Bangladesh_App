@@ -5,43 +5,42 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A Flutter application for managing geographic entities in Bangladesh.">
+  <meta name="description" content="A new Flutter project.">
 
   <!-- iOS meta tags & icons -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="Bangladesh Geo Entities">
+  <meta name="apple-mobile-web-app-title" content="geo_bangladesh">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>Bangladesh Geo Entities</title>
+  <title>Geo Bangladesh</title>
   <link rel="manifest" href="manifest.json">
 
-  <!-- Google Maps JavaScript API - Replace YOUR_API_KEY with your actual API key -->
+  <!-- Google Maps API -->
   <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCIu4quYeqaMOtdIxQFHmZiPNiw2g_caZw"></script>
 
   <script>
     // The value below is injected by flutter build, do not touch.
-    var serviceWorkerVersion = null;
+    var serviceWorkerVersion = '{{flutter_service_worker_version}}';
   </script>
-  <!-- This script adds the flutter initialization JS code -->
-  <script src="flutter.js" defer></script>
+  <!-- This is the flutter service worker -->
+  <script src="flutter_service_worker.js" defer></script>
 </head>
 <body>
 <script>
   window.addEventListener('load', function(ev) {
     // Download main.dart.js
-    _flutter.loader.loadEntrypoint({
+    _flutter.loader.load({
       serviceWorker: {
         serviceWorkerVersion: serviceWorkerVersion,
-      },
-      onEntrypointLoaded: function(engineInitializer) {
-        engineInitializer.initializeEngine().then(function(appRunner) {
-          appRunner.runApp();
-        });
       }
+    }).then(function(engineInitializer) {
+      return engineInitializer.initializeEngine();
+    }).then(function(appRunner) {
+      return appRunner.runApp();
     });
   });
 </script>
