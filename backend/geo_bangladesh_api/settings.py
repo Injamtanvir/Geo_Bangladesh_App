@@ -1,3 +1,6 @@
+"""
+Django settings for geo_bangladesh_api project.
+"""
 import os
 from pathlib import Path
 from decouple import config
@@ -63,6 +66,21 @@ WSGI_APPLICATION = 'geo_bangladesh_api.wsgi.application'
 # MongoDB Configuration
 MONGODB_URI = config('MONGODB_URI', default='mongodb://localhost:27017/geo_bangladesh')
 
+# Parse the database name from the URI or use a default
+DB_NAME = 'geo_bangladesh'  # Default database name
+if 'mongodb+srv://' in MONGODB_URI:
+    # For MongoDB Atlas URI
+    parts = MONGODB_URI.split('/')
+    if len(parts) > 3 and '?' in parts[3]:
+        DB_NAME = parts[3].split('?')[0]
+    elif len(parts) > 3:
+        DB_NAME = parts[3]
+elif 'mongodb://' in MONGODB_URI:
+    # For standard MongoDB URI
+    parts = MONGODB_URI.split('/')
+    if len(parts) > 3:
+        DB_NAME = parts[3].split('?')[0] if '?' in parts[3] else parts[3]
+
 # We'll use Django's default database for models
 DATABASES = {
     'default': {
@@ -74,7 +92,7 @@ DATABASES = {
 # Initialize PyMongo client
 import pymongo
 MONGO_CLIENT = pymongo.MongoClient(MONGODB_URI)
-MONGO_DB = MONGO_CLIENT.get_database()
+MONGO_DB = MONGO_CLIENT[DB_NAME]  # Use the database name explicitly
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
