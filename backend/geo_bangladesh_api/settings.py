@@ -14,7 +14,7 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-your-secret-key-here'
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = ['geo-bangladesh-app.onrender.com', 'localhost', '127.0.0.1']
+ALLOWED_HOSTS = ['geo-bangladesh-app.onrender.com', 'localhost', '127.0.0.1', '*']
 
 # Application definition
 INSTALLED_APPS = [
@@ -66,20 +66,38 @@ WSGI_APPLICATION = 'geo_bangladesh_api.wsgi.application'
 # MongoDB Configuration
 MONGODB_URI = config('MONGODB_URI', default='mongodb://localhost:27017/geo_bangladesh')
 
+# Ensure MongoDB URI is correctly formatted
+if not (MONGODB_URI.startswith('mongodb://') or MONGODB_URI.startswith('mongodb+srv://')):
+    print(f"WARNING: Invalid MongoDB URI format. Updating to correct format.")
+    # MongoDB Atlas provided URIs sometimes include <password> in angle brackets
+    if '<' in MONGODB_URI and '>' in MONGODB_URI:
+        # Replace <password> with actual password without angle brackets
+        MONGODB_URI = MONGODB_URI.replace('<GeoBangladeshApp123>', 'GeoBangladeshApp123')
+    
+    # Ensure URI starts with proper protocol
+    if not (MONGODB_URI.startswith('mongodb://') or MONGODB_URI.startswith('mongodb+srv://')):
+        MONGODB_URI = 'mongodb+srv://GeoBangladeshApp:<GeoBangladeshApp123>@geobangladeshapp.qty9xmu.mongodb.net/?retryWrites=true&w=majority&appName=GeoBangladeshApp'
+
 # Parse the database name from the URI or use a default
 DB_NAME = 'geo_bangladesh'  # Default database name
-if 'mongodb+srv://' in MONGODB_URI:
-    # For MongoDB Atlas URI
-    parts = MONGODB_URI.split('/')
-    if len(parts) > 3 and '?' in parts[3]:
-        DB_NAME = parts[3].split('?')[0]
-    elif len(parts) > 3:
-        DB_NAME = parts[3]
-elif 'mongodb://' in MONGODB_URI:
-    # For standard MongoDB URI
-    parts = MONGODB_URI.split('/')
-    if len(parts) > 3:
-        DB_NAME = parts[3].split('?')[0] if '?' in parts[3] else parts[3]
+
+try:
+    if 'mongodb+srv://' in MONGODB_URI:
+        # For MongoDB Atlas URI
+        parts = MONGODB_URI.split('/')
+        if len(parts) > 3 and '?' in parts[3]:
+            DB_NAME = parts[3].split('?')[0]
+        elif len(parts) > 3 and parts[3]:
+            DB_NAME = parts[3]
+    elif 'mongodb://' in MONGODB_URI:
+        # For standard MongoDB URI
+        parts = MONGODB_URI.split('/')
+        if len(parts) > 3 and parts[3]:
+            DB_NAME = parts[3].split('?')[0] if '?' in parts[3] else parts[3]
+    
+    print(f"Using MongoDB database: {DB_NAME}")
+except Exception as e:
+    print(f"Error parsing database name: {e}. Using default: {DB_NAME}")
 
 # We'll use Django's default database for models
 DATABASES = {
@@ -90,9 +108,20 @@ DATABASES = {
 }
 
 # Initialize PyMongo client
-import pymongo
-MONGO_CLIENT = pymongo.MongoClient(MONGODB_URI)
-MONGO_DB = MONGO_CLIENT[DB_NAME]  # Use the database name explicitly
+try:
+    import pymongo
+    MONGO_CLIENT = pymongo.MongoClient(MONGODB_URI)
+    # Test connection
+    MONGO_CLIENT.server_info()
+    print("Successfully connected to MongoDB")
+    MONGO_DB = MONGO_CLIENT[DB_NAME]  # Use the database name explicitly
+except Exception as e:
+    print(f"ERROR connecting to MongoDB: {e}")
+    # Fallback for development/testing
+    import pymongo
+    MONGO_CLIENT = pymongo.MongoClient('mongodb://localhost:27017/')
+    MONGO_DB = MONGO_CLIENT['geo_bangladesh']
+    print("Using fallback local MongoDB")
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
