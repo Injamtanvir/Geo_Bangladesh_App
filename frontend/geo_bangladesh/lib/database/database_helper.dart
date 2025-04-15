@@ -382,7 +382,7 @@ class DatabaseHelper {
           // Get the image URL
           final imageUrl = entity.image!.startsWith('http')
               ? entity.image!
-              : 'https://geo-bangladesh-api.onrender.com${entity.image}';
+              : 'https://geo-bangladesh-app.onrender.com${entity.image}';
 
           // Create HttpClient
           final httpClient = HttpClient();

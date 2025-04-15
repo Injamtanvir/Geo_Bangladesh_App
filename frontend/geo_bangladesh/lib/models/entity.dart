@@ -1,11 +1,10 @@
-// Entity model class to represent geographic entities
 class Entity {
   final int? id;
   final String title;
   final double lat;
   final double lon;
   final String? image;
-  final Map<String, dynamic>? properties; // Additional properties from Geoapify
+  final Map<String, dynamic>? properties;
 
   Entity({
     this.id,

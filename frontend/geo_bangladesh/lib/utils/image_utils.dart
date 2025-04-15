@@ -21,9 +21,9 @@ class ImageUtils {
       final result = await FlutterImageCompress.compressAndGetFile(
         imageFile.absolute.path,
         targetPath,
-        quality: 85,       // Quality of the compressed image
-        minWidth: 800,     // Target width
-        minHeight: 600,    // Target height
+        quality: 85, // Quality of the compressed image
+        minWidth: 800, // Target width
+        minHeight: 600, // Target height
       );
 
       if (result == null) {

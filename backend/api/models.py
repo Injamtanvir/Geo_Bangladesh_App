@@ -1,6 +1,5 @@
 from django.db import models
 from django.contrib.auth.models import User
-from djongo import models as djongo_models
 
 class GeoEntity(models.Model):
     """
@@ -11,7 +10,7 @@ class GeoEntity(models.Model):
     lat = models.FloatField()
     lon = models.FloatField()
     image = models.ImageField(upload_to='', null=True, blank=True)
-    properties = djongo_models.JSONField(null=True, blank=True)
+    properties = models.JSONField(null=True, blank=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='entities')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -1,23 +1,17 @@
-"""
-Django settings for geo_bangladesh_api project.
-"""
 import os
 from pathlib import Path
-from decouple import config, Csv
+from decouple import config
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = config('SECRET_KEY', default='mongodb+srv://GeoBangladeshApp:<GeoBangladeshApp123>@geobangladeshapp.qty9xmu.mongodb.net/?retryWrites=true&w=majority&appName=GeoBangladeshApp')
+SECRET_KEY = config('SECRET_KEY', default='django-insecure-your-secret-key-here')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = ['*']
-RENDER_EXTERNAL_HOSTNAME = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
-if RENDER_EXTERNAL_HOSTNAME:
-    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
+ALLOWED_HOSTS = ['geo-bangladesh-app.onrender.com', 'localhost', '127.0.0.1']
 
 # Application definition
 INSTALLED_APPS = [
@@ -66,19 +60,21 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'geo_bangladesh_api.wsgi.application'
 
-# MongoDB Database
-MONGODB_URI = config('MONGODB_URI', default='mongodb://localhost:27017/Geo_Bangladesh_App')
+# MongoDB Configuration
+MONGODB_URI = config('MONGODB_URI', default='mongodb://localhost:27017/geo_bangladesh')
 
+# We'll use Django's default database for models
 DATABASES = {
     'default': {
-        'ENGINE': 'djongo',
-        'NAME': 'geo_bangladesh',
-        'ENFORCE_SCHEMA': False,
-        'CLIENT': {
-            'host': MONGODB_URI,
-        }
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
+
+# Initialize PyMongo client
+import pymongo
+MONGO_CLIENT = pymongo.MongoClient(MONGODB_URI)
+MONGO_DB = MONGO_CLIENT.get_database()
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -121,7 +117,7 @@ REST_FRAMEWORK = {
         'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',
+        'rest_framework.permissions.IsAuthenticatedOrReadOnly',
     ],
 }
 

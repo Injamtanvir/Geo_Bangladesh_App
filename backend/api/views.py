@@ -1,4 +1,3 @@
-# api/views.py
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -6,8 +5,9 @@ from rest_framework.authtoken.models import Token
 from rest_framework.authtoken.views import ObtainAuthToken
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
-from .models import GeoEntity
-from .serializers import GeoEntitySerializer, UserSerializer
+from django.conf import settings
+from .models import GeoEntity, OfflineImage
+from .serializers import GeoEntitySerializer, UserSerializer, OfflineImageSerializer
 import os
 
 class LoginView(ObtainAuthToken):
@@ -74,6 +74,14 @@ def logout(request):
     return Response({
         'success': False,
         'error': 'Not logged in'
+    })
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def check_server(request):
+    return Response({
+        'status': 'online',
+        'message': 'Server is running'
     })
 
 class GeoEntityViewSet(viewsets.ModelViewSet):
