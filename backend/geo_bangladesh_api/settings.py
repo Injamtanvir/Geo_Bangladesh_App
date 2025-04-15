@@ -76,7 +76,7 @@ if not (MONGODB_URI.startswith('mongodb://') or MONGODB_URI.startswith('mongodb+
     
     # Ensure URI starts with proper protocol
     if not (MONGODB_URI.startswith('mongodb://') or MONGODB_URI.startswith('mongodb+srv://')):
-        MONGODB_URI = 'mongodb+srv://GeoBangladeshApp:<GeoBangladeshApp123>@geobangladeshapp.qty9xmu.mongodb.net/?retryWrites=true&w=majority&appName=GeoBangladeshApp'
+        MONGODB_URI = 'mongodb+srv://GeoBangladeshApp:GeoBangladeshApp123@geobangladeshapp.qty9xmu.mongodb.net/?retryWrites=true&w=majority&appName=GeoBangladeshApp'
 
 # Parse the database name from the URI or use a default
 DB_NAME = 'geo_bangladesh'  # Default database name
